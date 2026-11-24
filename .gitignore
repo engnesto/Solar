@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+logs/
+*.jpg
+*.jpeg
+*.png
+deepseek_html_*.html

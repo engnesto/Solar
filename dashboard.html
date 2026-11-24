@@ -1,0 +1,1904 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=yes"
+    />
+    <title>PowerGray · PowerWatch · MPS 5KVA-60 Inverter Dashboard</title>
+    <!-- Tailwind + Font Awesome + Chart.js -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+    />
+    <style>
+      * {
+        font-family:
+          "Inter",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          monospace;
+      }
+      body {
+        background: #0a0c12;
+      }
+      .gradient-mesh {
+        background: #05070a;
+      }
+      .glass-card {
+        background: rgba(18, 25, 32, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(72, 187, 120, 0.2);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+      }
+      .inverter-lcd {
+        background: #0b171f;
+        background-image: radial-gradient(
+          circle at 10% 20%,
+          rgba(46, 204, 113, 0.05) 1px,
+          transparent 1px
+        );
+        background-size: 24px 24px;
+        border: 1px solid #2c5a44;
+      }
+      .glow-green {
+        text-shadow: 0 0 4px #2ecc71;
+      }
+      .glow-amber {
+        text-shadow: 0 0 4px #e8b624;
+      }
+      .btn-toggle {
+        transition: all 0.2s ease;
+      }
+      .serial-bar {
+        background: rgba(0, 0, 0, 0.6);
+        border-left: 3px solid #2ecc71;
+      }
+      canvas {
+        max-height: 280px;
+        width: 100%;
+      }
+      .badge-live {
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          opacity: 0.6;
+          box-shadow: 0 0 0 0 #2ecc7150;
+        }
+        70% {
+          opacity: 1;
+          box-shadow: 0 0 0 5px #2ecc7100;
+        }
+        100% {
+          opacity: 0.6;
+        }
+      }
+      .tab-active {
+        background: #2ecc71;
+        color: #0a0c12;
+      }
+      .led-red {
+        background: #e74c3c;
+        box-shadow: 0 0 6px #e74c3c;
+      }
+      .led-green {
+        background: #2ecc71;
+        box-shadow: 0 0 6px #2ecc71;
+      }
+      .led-yellow {
+        background: #e8b624;
+        box-shadow: 0 0 6px #e8b624;
+      }
+      .mono-digits {
+        font-feature-settings: "tnum";
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 1px;
+      }
+      .raw-monitor {
+        max-height: 200px;
+        overflow-y: auto;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+      }
+      .raw-monitor::-webkit-scrollbar {
+        width: 6px;
+      }
+      .raw-monitor::-webkit-scrollbar-track {
+        background: #1a2a2f;
+        border-radius: 4px;
+      }
+      .raw-monitor::-webkit-scrollbar-thumb {
+        background: #2ecc71;
+        border-radius: 4px;
+      }
+      /* State chip styles */
+      .state-chip {
+        opacity: 0.2;
+        transition: all 0.2s ease;
+        cursor: default;
+      }
+      .state-chip.active {
+        opacity: 1;
+        /* filter: drop-shadow(0 0 4px currentColor); */
+      }
+      .state-chip.inactive {
+        opacity: 0.35;
+        filter: grayscale(0.3);
+      }
+      .source-indicator {
+        transition: all 0.2s;
+      }
+      .text-xs {
+        font-size: 1rem !important;
+      }
+    </style>
+  </head>
+  <body class="gradient-mesh text-gray-200 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <!-- HEADER with mode toggle -->
+      <div
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+      >
+        <div class="flex items-center gap-3">
+          <div class="p-2 rounded-xl bg-emerald-500/20 glow-green">
+            <i class="fas fa-solar-panel text-2xl text-emerald-400"></i>
+          </div>
+          <div>
+            <h1
+              class="text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-300 to-amber-300 bg-clip-text text-transparent"
+            >
+              Home
+            </h1>
+            <p class="text-xs text-gray-400">
+              MPS 5KVA-60 · Hybrid Inverter Monitoring
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div
+            class="flex items-center gap-1 bg-gray-800/70 rounded-xl p-1 border border-gray-700"
+          >
+            <button
+              id="demoModeBtn"
+              class="mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 bg-emerald-600 text-white shadow"
+            >
+              <i class="fas fa-chart-line"></i> Demo
+            </button>
+            <button
+              id="serialModeBtn"
+              class="mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-gray-300 hover:text-white flex items-center gap-2"
+            >
+              <i class="fas fa-satellite-dish"></i> Live
+            </button>
+          </div>
+          <div
+            id="connectionStatusBadge"
+            class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-emerald-700/40"
+          >
+            <span
+              id="statusLed"
+              class="w-2 h-2 rounded-full bg-gray-500"
+            ></span>
+            <span id="statusText" class="text-xs font-mono text-gray-300"
+              >Demo Mode</span
+            >
+          </div>
+        </div>
+      </div>
+
+      <!-- SERIAL CONNECTION PANEL -->
+      <div
+        id="serialPanel"
+        class="glass-card rounded-xl p-4 hidden transition-all duration-300"
+      >
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex items-center gap-2 text-emerald-300">
+            <i class="fas fa-plug"></i
+            ><span class="text-sm">Live inverter · PI30 via inverter_server.py</span>
+          </div>
+          
+          <button
+            id="serialConnectBtn"
+            class="bg-emerald-700 hover:bg-emerald-600 px-4 py-1.5 rounded-lg text-sm font-medium transition"
+          >
+            <i class="fas fa-sync mr-1"></i> Reconnect
+          </button>
+          <button
+            id="serialRawMonitorBtn"
+            class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition hidden md:flex items-center gap-1"
+          >
+            <i class="fas fa-terminal"></i> Raw Monitor
+          </button>
+          <div id="serialStatusMsg" class="text-xs text-gray-400 font-mono">
+            ⚡ Waiting for bridge…
+          </div>
+        </div>
+        <div id="serialErrorMsg" class="mt-2 text-xs text-red-400 hidden"></div>
+        <div
+          id="rawMonitorPanel"
+          class="mt-3 hidden border-t border-gray-700 pt-3"
+        >
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-semibold text-emerald-400"
+              ><i class="fas fa-exchange-alt mr-1"></i> Raw inverter replies (decoded QPIGS)</span
+            ><button
+              id="clearRawBtn"
+              class="text-[10px] text-gray-500 hover:text-gray-300"
+            >
+              Clear
+            </button>
+          </div>
+          <div
+            id="rawDataLog"
+            class="raw-monitor bg-black/40 rounded-lg p-2 text-[10px] font-mono text-emerald-300/80"
+          ></div>
+          <div class="text-[9px] text-gray-500 mt-1">
+            ↑ Decoded replies from the inverter. Fields: gridV gridHz outV outHz VA W load% busV battV chgA SOC temp pvA pvV sccV dischgA status …
+          </div>
+        </div>
+      </div>
+
+      <!-- INVERTER LIVE DISPLAY with dynamic state chips -->
+      <div
+        class="inverter-lcd rounded-2xl p-5 shadow-2xl border border-emerald-800/40"
+      >
+        <div
+          class="grid grid-cols-1 sm:grid-cols-3 gap-5 border-b border-emerald-800/40 pb-5 mb-4"
+        >
+          <!-- INVERTER CARD - ENHANCED with dynamic state chips (Bypass, Solar, Battery) -->
+          <div
+            class="bg-black/30 rounded-xl p-3 border-l-4 border-emerald-400 hover:bg-black/40 transition"
+          >
+            <div class="flex justify-between items-center">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-microchip text-emerald-300"></i>
+                <span class="text-emerald-300 text-sm font-semibold"
+                  >INVERTER</span
+                >
+              </div>
+              <span
+                id="invStatusBadge"
+                class="text-[10px] bg-emerald-900/50 px-2 py-0.5 rounded-full flex items-center gap-1"
+                ><i class="fas fa-circle text-[6px] text-green-400"></i>
+                ONLINE</span
+              >
+            </div>
+            <div class="mt-2 flex items-center justify-between">
+              <?xml version="1.0" encoding="UTF-8"?>
+              <svg
+                id="Layer_1"
+                xmlns="http://www.w3.org/2000/svg"
+                version="1.1"
+                xmlns:xlink="http://www.w3.org/1999/xlink"
+                viewBox="0 0 841.9 232.5"
+              >
+                <!-- Generator: Adobe Illustrator 29.3.1, SVG Export Plug-In . SVG Version: 2.1.0 Build 151)  -->
+                <defs>
+                  <style>
+                    .st0,
+                    .st1,
+                    .st2,
+                    .st3,
+                    .st4,
+                    .st5,
+                    .st6,
+                    .st7,
+                    .st8,
+                    .st9,
+                    .st10,
+                    .st11,
+                    .st12,
+                    .st13,
+                    .st14,
+                    .st15,
+                    .st16,
+                    .st17,
+                    .st18,
+                    .st19,
+                    .st20,
+                    .st21,
+                    .st22,
+                    .st23,
+                    .st24,
+                    .st25,
+                    .st26,
+                    .st27,
+                    .st28,
+                    .st29 {
+                      fill: none;
+                    }
+
+                    .st0,
+                    .st1,
+                    .st2,
+                    .st3,
+                    .st5,
+                    .st6,
+                    .st7,
+                    .st8,
+                    .st10,
+                    .st11,
+                    .st14,
+                    .st15,
+                    .st16,
+                    .st17,
+                    .st19,
+                    .st20,
+                    .st23,
+                    .st24,
+                    .st25,
+                    .st26,
+                    .st27,
+                    .st29 {
+                      stroke-miterlimit: 10;
+                    }
+
+                    .st0,
+                    .st1,
+                    .st2,
+                    .st4,
+                    .st5,
+                    .st6,
+                    .st7,
+                    .st8,
+                    .st9,
+                    .st10,
+                    .st11,
+                    .st13,
+                    .st14,
+                    .st15,
+                    .st16,
+                    .st17,
+                    .st18,
+                    .st19,
+                    .st20,
+                    .st21,
+                    .st22,
+                    .st23,
+                    .st24,
+                    .st25,
+                    .st26,
+                    .st27,
+                    .st28,
+                    .st29 {
+                      stroke-width: 3px;
+                    }
+
+                    .st0,
+                    .st1,
+                    .st2,
+                    .st4,
+                    .st5,
+                    .st8,
+                    .st9,
+                    .st10,
+                    .st11,
+                    .st13,
+                    .st14,
+                    .st15,
+                    .st16,
+                    .st18,
+                    .st19,
+                    .st20,
+                    .st21,
+                    .st22,
+                    .st23,
+                    .st24,
+                    .st25,
+                    .st27,
+                    .st28,
+                    .st29 {
+                      stroke: #fff;
+                    }
+
+                    .st0,
+                    .st21 {
+                      stroke-dasharray: 6.3 0 0 0 1.1 6.3;
+                    }
+
+                    .st1,
+                    .st17 {
+                      stroke-dasharray: 0 0 1 6 0 0;
+                    }
+
+                    .st2 {
+                      stroke-dasharray: 6.3 0 0 0 1 6.3;
+                    }
+
+                    .st3 {
+                      stroke-width: 4px;
+                    }
+
+                    .st3,
+                    .st7 {
+                      stroke: #34d399;
+                    }
+
+                    .st5 {
+                      stroke-dasharray: 0 0 1 6.3 0 0;
+                    }
+
+                    .st6,
+                    .st17,
+                    .st26 {
+                      stroke: #fcfcfc;
+                    }
+
+                    .st8 {
+                      stroke-dasharray: 6 0 0 0 1 6;
+                    }
+
+                    .st9 {
+                      stroke-dasharray: 0 0 1 5.9 0 0;
+                    }
+
+                    .st10 {
+                      stroke-dasharray: 5.7 0 0 0 0.9 5.7;
+                    }
+
+                    .st30 {
+                      font-family: ArialRoundedMTBold, "Arial Rounded MT Bold";
+                      font-size: 14px;
+                    }
+
+                    .st30,
+                    .st31 {
+                      isolation: isolate;
+                    }
+
+                    .st30,
+                    .st32 {
+                      fill: #e5e7eb;
+                    }
+
+                    .st33 {
+                      fill: #fff;
+                    }
+
+                    .st11 {
+                      stroke-dasharray: 6.2 0 0 0 1 6.2;
+                    }
+
+                    .st34 {
+                      fill: #93c5fd;
+                    }
+
+                    .st13 {
+                      stroke-dasharray: 0 0 1 6.2 0 0;
+                    }
+
+                    .st14 {
+                      stroke-dasharray: 0 0 1 5.8 0 0;
+                    }
+
+                    .st35 {
+                      clip-path: url(#clippath-1);
+                    }
+
+                    .st15,
+                    .st26 {
+                      stroke-dasharray: 6 0 0 0 1 6;
+                    }
+
+                    .st16,
+                    .st22 {
+                      stroke-dasharray: 0 0 1.1 6.3 0 0;
+                    }
+
+                    .st18 {
+                      stroke-dasharray: 6.2 0 0 0 1 6.2;
+                    }
+
+                    .st20 {
+                      stroke-dasharray: 0 0 1 6.2 0 0;
+                    }
+
+                    .st36 {
+                      fill: #2ecc71;
+                    }
+
+                    .st23 {
+                      stroke-dasharray: 5.5 0 0 0 0.9 5.5;
+                    }
+
+                    .st37 {
+                      fill: #f59e0b;
+                    }
+
+                    .st24 {
+                      stroke-dasharray: 0 0 0.9 5.7 0 0;
+                    }
+
+                    .st25 {
+                      stroke-dasharray: 5.8 0 0 0 1 5.8;
+                    }
+
+                    .st27 {
+                      stroke-dasharray: 0 0 0.9 5.5 0 0;
+                    }
+
+                    .st28 {
+                      stroke-dasharray: 5.9 0 0 0 1 5.9;
+                    }
+
+                    .st29 {
+                      stroke-dasharray: 0 0 1 6 0 0;
+                    }
+
+                    .st38 {
+                      clip-path: url(#clippath-2);
+                    }
+
+                    .st39 {
+                      fill: #34d399;
+                    }
+
+                    .st40 {
+                      clip-path: url(#clippath);
+                    }
+                  </style>
+                  <clipPath id="clippath">
+                    <rect
+                      class="st12"
+                      x="53.6"
+                      y="160.5"
+                      width="109.2"
+                      height="72"
+                    />
+                  </clipPath>
+                  <clipPath id="clippath-1">
+                    <rect
+                      class="st12"
+                      x="570.8"
+                      y="79.4"
+                      width="24.9"
+                      height="9.3"
+                    />
+                  </clipPath>
+                  <clipPath id="clippath-2">
+                    <rect
+                      class="st12"
+                      x="245.9"
+                      y="60"
+                      width="24.9"
+                      height="9.3"
+                    />
+                  </clipPath>
+                </defs>
+                <g id="solar">
+                  <g class="st40">
+                    <g>
+                      <path
+                        class="st37"
+                        d="M122.6,179.6l-.3-2.7-21.5-14.5-.5-.9c6-.1,12-.1,18-.2,3.1,0,6.4-.6,9.6-.1l34.9,23.3v.8l-17.2,7.2-8.2-5.6v2.5c2,1.5,5.5,3.1,7.2,4.7.6.6,1.1,1.1.2,1.8-1.3,1-6.4,2.4-7.2,3.3-.6.7-.1,2.8-.3,3.8l15.6-7.6h1.2c0,0-70.9,37.1-70.9,37.1-1.1.4-5.5,0-6.8-.4-.2,0-1.8-.6-1.6-.9l7.9-3.7.2-.5v-44.4s-28.9-19.8-28.9-19.8l-.5-.8,40-1.2,29.1,19.1h0s0,0,0,0ZM124.9,161.6c-6.8.7-13.8.2-20.6.9-.4,0-.7,0-.9.4l41.7,28h1.1c1.7-1,15-5.5,15.2-6.3.2-.7-1-1.3-1.5-1.6-9.9-7.4-21.6-13.6-31.8-20.9l-3.3-.5h0ZM87.1,161.8c-6.6.1-13.2.7-19.8,1-2.6.1-5.1,0-7.6.2-.4,0-.7,0-.9.4.7.7,1.5,1.3,2.3,1.9,18.4,13.3,38,25.1,56.4,38.3.9.5,2,1,3,.8l22-9.2c.4-.5,0-1-.4-1.4l-47-31c-2.4-1.6-5.3-1.1-8-1h0ZM134.4,187.1v-1.9c.1,0-8.4-6.1-8.4-6.1l.2,2.7,8.2,5.3h0ZM87.7,185.3v39.8l9.4-4.3.3-.8-.3-28.4-9.4-6.4h0ZM102.4,194.9v23.5l20.4-9.2-.2-3.7c-.4-.4-3,1.5-3.7.9l-16.5-11.5h0ZM126,204.3v3.8l7.6-3.5.5-3.8-8.1,3.5h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M127.1,200l-7.6,2.7-14.1-9.6,8.9-2.4,12.3,8.3.6.9h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M86.4,172.4l-10.8,1-13.8-9.5,11.6-.4,13.1,8.9h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M112.9,190.2l-8.9,2.2-12.1-8.2-.4-.7,9.5-1.5,12,8.2h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M99.5,181.1l-9.8,1.5-12.8-8.5,10.8-1.1c3.8,2.9,8.2,5.1,11.8,8.1h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M95.6,171.6l-7.4.5-12.8-8.7c2.1-.1,6.2-.7,8.2-.1,1.1.3,8,5.3,9.5,6.4.9.6,1.8,1.3,2.5,2h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M115.6,190.7c0-.7,0-.4.4-.5,1.1-.3,4.9-1.4,5.7-1.2l12,8.1-5.2,2.1-12.8-8.4h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M140.5,194.1c.1.5-.2.6-.6.8-.6.3-4.6,1.8-5,1.7-3.4-2.7-8-4.9-11.2-7.6-.3-.3-.7-.4-.5-.9l6.4-1.2,11,7.2h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M104.8,170.6l-7.7.7-11.8-8.2,8.2-.2,11.2,7.7Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M119.9,187.7c.1.2,0,.5,0,.7l-6,1.2-11.5-7.9,6.6-1.1,11,7.1h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M107.7,179.4c0,.6,0,.4-.4.5-.9.3-5.6,1.1-6.3.9l-11.5-7.9,7.2-.7,11,7.2h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M110.8,180.1l7.1-.9,10,6.7c0,.3-5.8,1.9-6.6,1.6l-10.5-7.4h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M116.3,178.3l-7.2,1-10.7-7.2,7.7-.7,10.2,6.9h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M122.4,169l-7.1.7-9.4-6.6c2.4.4,5.7-.8,7.9-.1.8.2,4.9,3.1,5.8,3.8s2,1.4,2.8,2.3h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M150.4,188.1l-5.3,1.8-9.6-6.7,6.1-1.5c2.5,2.1,6,3.6,8.4,5.7.3.2.6.2.4.7h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M140.7,180.9c0,.7,0,.4-.4.5-1.9.4-3.8,1-5.7,1.2l-8.6-5.9,6.6-1.2,8.1,5.3h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M131.6,174.9c-1.8,0-5.3,1.4-6.9,1-.7-.2-5.6-3.7-6.6-4.4-.6-.4-1.4-.9-1.8-1.5l7.1-.6,8.1,5.6h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M120.4,162.5l8.3,5.6c-.2.4-.5.4-.9.4-1.3.1-3.3.4-4.4,0-1.3-.6-6.6-4.3-8-5.3-.2-.2-.5,0-.3-.6h5.4Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M142.6,181.7c0-.7,0-.4.4-.5.8-.2,3.2-.9,3.9-.7l8.3,5.5-3.7,1.4-8.9-5.6h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M127.8,162.5c1.4.3,5.7,4.3,7.5,5l-5.1.8c-2.5-1.8-5.5-3.4-7.9-5.2-.2-.2-.5,0-.3-.6,1.7.2,4.3-.3,5.9,0h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M159.6,184.5l-3.7,1-8.1-5.6,4.3-1c2,1.8,5,3.1,7,4.7.3.3.6.4.6.9h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M137.3,173.7c0,.7,0,.4-.4.5-.7.2-3.6.8-4.1.6-.5-.1-6.6-4.2-7.4-4.8-.3-.2-.6-.4-.7-.7l5.1-.5,7.5,4.9h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M145.7,179.4c.5.8-3.5,1.5-4,1.5l-8.1-5.6,4.5-.6,7.6,4.8h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M143.1,173.1l-4.7.7-7.3-5.1c1.6-.2,3.8-.9,5.3-.4.6.2,5.5,3.6,6.3,4.2.2.2.5.3.6.6h0Z"
+                      />
+                      <path
+                        class="st37"
+                        d="M151.2,178.6l-4.3,1-7.5-5.1,4.8-.7,7,4.9h0Z"
+                      />
+                    </g>
+                  </g>
+                </g>
+                <g id="battery_charge_indicator">
+                  <path
+                    class="st36"
+                    d="M428,157.3l-4.7,13.9c.1,1.3,5.1.6,6.3.8.1.6,0,1.1-.2,1.6-.5,1.4-11.4,15-13.1,16.7-.5.6-.9,1.2-1.8,1l4.7-14.1c-1.4-.2-7,.8-6.7-1.2,4.8-5.4,9-12.2,13.9-17.6.5-.6.8-1.3,1.8-1.1h0s0,0,0,0Z"
+                  />
+                </g>
+                <g id="battery">
+                  <path
+                    class="st36"
+                    d="M403.2,147.4h39.4v-3.8s.4-.5.5-.6c.6-.5,1.3-.6,2.3-.6,5.4-.3,11.2.2,16.6,0,.8-.1,2.5.7,2.5,1.2v3.8h16.2c2,0,4.1,1.7,4,3.1v50.1c-.2,1.5-1.5,2.8-3.8,2.9h-116.1c-2.5-.1-3.8-1.4-4-2.9v-50c-.2-1.4,2-3.2,4-3.2h16.4v-3.4s.3-.6.4-.7c.5-.6,1.5-.8,2.4-.9,5.4-.3,11.5.2,17,0,.8,0,2.3.8,2.3,1.3v3.6h0ZM369.4,153.2v44.4h106.6v-44.4h-106.6Z"
+                  />
+                </g>
+                <g id="Load">
+                  <path
+                    class="st34"
+                    d="M747.9,150.6v-7.2c0-.9,2.4-3.6,3.4-4,2.7-1.2,12.9-1.2,15.7-.2,2.7,1,3.8,4.2,4,6.9.6,7.3-.5,15.4,0,22.8l19.7,15.8c.8,1.8-.1,2.9-1,4.4-.8,1.2-6.6,8.5-7.4,8.9-2.6,1.6-5-1.5-7-2.9v19.2c0,4.2-5.5,8.2-9.6,7.9-23.3-1.1-48,1.5-71.1,0-3-.2-5.7-.6-7.8-2.9-1.3-1.4-2.5-4-2.5-5.9v-18.4c-1.9,1.4-4.7,4.6-7.2,2.7l-8.1-10.2c-.4-1-.6-2.3,0-3.2l58.6-46.4c1.7-.9,2.3-1.1,4-.2l16.3,12.7h0ZM754.2,144.9v12.2c0,1.9-3.3,4-5.1,2.4l-19.3-15.3-53.5,42.2c-.8,1.3,2.9,3.6,3,5,.5.3,6-4.9,7-5.2,2.6-.8,4.1.7,4.3,3.1.7,7.6-.7,16.4,0,24,.1,1.2.2,2.2,1.6,2.7l74.1.2c1.9,0,2.7-.7,2.9-2.5.9-7.4-.7-16.5,0-24,.9-9.5,10.6,2.3,11.3,1.8l3.2-4.5-.4-.8-16.8-13.2c-.4-.3-1.5-1.6-1.5-1.9v-26.1h-10.6Z"
+                  />
+                  <g>
+                    <path
+                      class="st34"
+                      d="M738,179.1c3.6,3.4,4.5,8.6,2.2,13-.9,1.7-2.6,3-3.3,4.6-.7,1.6-.3,4.2-2.2,4.5-1.7.2-6.4.2-8.2,0-.5,0-1.1-.2-1.3-.8-.4-1.1-.4-2.4-.9-3.7-.7-1.6-2.4-2.9-3.3-4.6-5.7-10.9,8.3-21.2,17.1-13h0ZM728.8,178.7c-3.6.5-6.5,4.1-6.8,7.6-.4,5.5,3.3,6.4,4.9,10.8.2.6.1,1.3.5,1.8.3.2,5.8.2,6.2,0,.5-.2.5-1.4.7-1.9,1.4-3.9,4.8-5.2,4.9-9.7,0-5.8-4.8-9.4-10.3-8.6h0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M726.5,204.8c.8-.2,7-.2,7.9,0,1.2.2,1.9,1.8.7,2.4-.9.4-5,0-6.4.1-1,0-2,.5-2.9-.2-1-.7-.3-2,.7-2.3h0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M726.3,201.9c1-.2,7.2-.2,8.3,0,1.7.3,1.2,2.3,0,2.5-.9.2-7.2.2-8.1,0-1.3-.2-1.6-2.1-.2-2.5h0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M734.5,207.9c.7.5-.6,2.2-1.4,2.5-.7.2-4.7.1-5.3,0-1.1-.4-1.8-2.4-1.3-2.4,1,0,7.6-.2,7.9,0h0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M746.3,185.8c.5-.1,5-.1,5.6,0,1.2.2,1.2,2.1,0,2.3-.7.1-4.9.1-5.6,0-1.2-.3-.9-1.9,0-2.2h0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M715.2,187.8c-.2.2-.8.2-1.1.3-1,0-4.1.2-5,0-1.2-.2-1.3-2,.2-2.3.8-.1,4.4-.1,5.2,0,.9.2,1.3,1.4.7,2h0s0,0,0,0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M743.8,201.7c-.4-.4-3-2.6-3.1-2.9-.2-1.1.8-2,1.8-1.3.7,1.1,3.5,3,4,4,.4,1.1-.5,2-1.6,1.6-.5-.2-.8-1-1.1-1.3Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M720.2,198.8l-4.1,4.1c-1.1.5-2.1-.6-1.5-1.7.1-.2,3.7-3.8,4-4,1-.5,2,.5,1.6,1.5Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M741.2,176.5c-.4-.2-.5-1.1-.3-1.5.2-.3,3.9-3.9,4.1-4.1,1-.6,2,.6,1.2,1.9-.2.3-3.4,3.5-3.7,3.6-.3.1-1.1.2-1.4,0h0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M719.8,176.5c-.2.1-1.1.1-1.4,0-.7-1.1-3.9-3.3-4-4.5,0-.9.7-1.6,1.5-1.1.3.2,4,3.8,4.1,4,.3.5.1,1.3-.3,1.5h0Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M729.5,165.1c.2-.8,2.1-.6,2.1,0v6.3c0,.6-2.1.6-2.1,0,0-1.3-.3-5.3,0-6.3Z"
+                    />
+                    <path
+                      class="st34"
+                      d="M733.2,180.7l-1.9,5.5c0,.5,2,.2,2.5.3,0,.2,0,.4,0,.6-.2.6-4.6,6-5.2,6.7-.2.2-.4.5-.7.4l1.9-5.6c-.5-.1-2.8.3-2.7-.5,1.9-2.2,3.6-4.9,5.5-7,.2-.2.3-.5.7-.4h0Z"
+                    />
+                  </g>
+                </g>
+                <g id="inverter_to_load">
+                  <g class="st35">
+                    <path
+                      class="st39"
+                      d="M571.2,86.1c-1.2-1.5.9-3.4,1.8-4.2,2.7-2.6,5.6-3.2,8.7-1.3,3.4,2.1,5.4,7.3,9.9,3.9,1-.8,2.3-3.2,3.5-2.2,1.7,1.3-.6,3.4-1.5,4.3-1.8,1.6-3.6,2.5-5.8,2.2-5.2-.8-7.6-10.2-13.7-4-.8.8-1.8,2.9-2.9,1.4h0Z"
+                    />
+                  </g>
+                  <path
+                    class="st3"
+                    d="M608.1,53.5v42c0,3.3-2.7,6.1-6.1,6.1h-73.2c-1.7,0-3.2-.7-4.3-1.8l81.6-50.7c1.2,1.1,1.9,2.7,1.9,4.4Z"
+                  />
+                  <path
+                    class="st3"
+                    d="M603.8,46.9l-81.6,50.7c-1.1-1.1-1.8-2.6-1.8-4.3v-42c0-3.3,2.7-6.1,6.1-6.1h73.2c1.6,0,3.1.6,4.2,1.7h0Z"
+                  />
+                  <line class="st7" x1="529.4" y1="55" x2="565.2" y2="55" />
+                  <line class="st7" x1="529.4" y1="61.1" x2="539.1" y2="61.1" />
+                  <line class="st7" x1="542.5" y1="61.1" x2="552.2" y2="61.1" />
+                  <line class="st7" x1="555.6" y1="61.1" x2="565.2" y2="61.1" />
+                  <line class="st19" x1="612" y1="69.3" x2="615" y2="69.3" />
+                  <line class="st5" x1="615" y1="69.3" x2="621.8" y2="69.3" />
+                  <line class="st2" x1="623.4" y1="69.3" x2="711" y2="69.3" />
+                  <line
+                    class="st19"
+                    x1="711.5"
+                    y1="69.3"
+                    x2="714.5"
+                    y2="69.3"
+                  />
+                  <line class="st19" x1="713" y1="68" x2="713" y2="71" />
+                  <line class="st16" x1="713" y1="71" x2="713" y2="77.9" />
+                  <line class="st0" x1="713" y1="79.4" x2="713" y2="123.3" />
+                  <line class="st19" x1="713" y1="123.8" x2="713" y2="126.8" />
+                  <path class="st33" d="M706,125.3h13.9l-7,12-7-12.1h0Z" />
+                  <line
+                    class="st19"
+                    x1="437.4"
+                    y1="81.3"
+                    x2="440.4"
+                    y2="81.3"
+                  />
+                  <line
+                    class="st20"
+                    x1="440.4"
+                    y1="81.3"
+                    x2="447.1"
+                    y2="81.3"
+                  />
+                  <line
+                    class="st11"
+                    x1="448.6"
+                    y1="81.3"
+                    x2="505.9"
+                    y2="81.3"
+                  />
+                  <line
+                    class="st19"
+                    x1="506.4"
+                    y1="81.3"
+                    x2="509.4"
+                    y2="81.3"
+                  />
+                  <line
+                    class="st19"
+                    x1="438.5"
+                    y1="79.8"
+                    x2="438.5"
+                    y2="82.8"
+                  />
+                  <line
+                    class="st29"
+                    x1="438.5"
+                    y1="82.8"
+                    x2="438.5"
+                    y2="89.3"
+                  />
+                  <line
+                    class="st8"
+                    x1="438.5"
+                    y1="90.8"
+                    x2="438.5"
+                    y2="132.3"
+                  />
+                  <line
+                    class="st19"
+                    x1="438.5"
+                    y1="132.8"
+                    x2="438.5"
+                    y2="135.8"
+                  />
+                  <path class="st33" d="M503.4,88.3v-13.9l12,7-12,7h0Z" />
+                </g>
+                <g id="from_charger_to_inverter">
+                  <g>
+                    <line class="st19" x1="327.1" y1="60" x2="330.1" y2="60" />
+                    <line class="st1" x1="330.1" y1="60" x2="336.6" y2="60" />
+                    <line class="st15" x1="338.1" y1="60" x2="505.9" y2="60" />
+                    <line class="st19" x1="506.4" y1="60" x2="509.4" y2="60" />
+                  </g>
+                  <path class="st33" d="M503.4,67v-13.9l12,7-12,7h0Z" />
+                </g>
+                <g id="from_solar_to_charger">
+                  <path class="st33" d="M283.4,121.1h-13.9l7-12.1,7,12.1h0Z" />
+                  <line
+                    class="st4"
+                    x1="168.8"
+                    y1="187.4"
+                    x2="171.8"
+                    y2="187.4"
+                  />
+                  <line
+                    class="st9"
+                    x1="171.8"
+                    y1="187.4"
+                    x2="178.1"
+                    y2="187.4"
+                  />
+                  <line
+                    class="st28"
+                    x1="179.6"
+                    y1="187.4"
+                    x2="275"
+                    y2="187.4"
+                  />
+                  <line
+                    class="st4"
+                    x1="275.5"
+                    y1="187.4"
+                    x2="278.5"
+                    y2="187.4"
+                  />
+                  <line class="st4" x1="277" y1="114.8" x2="277" y2="117.8" />
+                  <line class="st22" x1="277" y1="117.8" x2="277" y2="124.8" />
+                  <line class="st21" x1="277" y1="126.3" x2="277" y2="184.9" />
+                  <line class="st4" x1="277" y1="185.4" x2="277" y2="188.4" />
+                </g>
+                <g id="Charger">
+                  <line
+                    class="st19"
+                    x1="327.1"
+                    y1="81.3"
+                    x2="330.1"
+                    y2="81.3"
+                  />
+                  <line
+                    class="st24"
+                    x1="330.1"
+                    y1="81.3"
+                    x2="336.3"
+                    y2="81.3"
+                  />
+                  <line class="st10" x1="337.7" y1="81.3" x2="404" y2="81.3" />
+                  <line
+                    class="st19"
+                    x1="404.5"
+                    y1="81.3"
+                    x2="407.5"
+                    y2="81.3"
+                  />
+                  <line class="st19" x1="406" y1="80.4" x2="406" y2="83.3" />
+                  <line class="st14" x1="406" y1="83.3" x2="406" y2="89.4" />
+                  <line class="st25" x1="406" y1="90.8" x2="406" y2="130" />
+                  <line class="st19" x1="406" y1="130.5" x2="406" y2="133.3" />
+                  <path class="st33" d="M398.6,126.7h13.9l-7,12.1-7-12.1h0Z" />
+                  <g class="st38">
+                    <path
+                      class="st39"
+                      d="M246.2,66.7c-1.2-1.5.9-3.4,1.8-4.2,2.7-2.6,5.6-3.2,8.7-1.3,3.4,2.1,5.4,7.3,9.9,3.9,1-.8,2.3-3.2,3.5-2.2,1.7,1.3-.6,3.5-1.5,4.3-1.8,1.6-3.6,2.5-5.8,2.2-5.2-.8-7.6-10.2-13.7-4-.8.8-1.8,2.9-2.9,1.4h0Z"
+                    />
+                  </g>
+                  <path
+                    class="st3"
+                    d="M321.2,55.5v42c0,3.3-2.7,6.1-6.1,6.1h-73.2c-1.7,0-3.2-.7-4.3-1.8l81.6-50.7c1.2,1.1,1.9,2.7,1.9,4.4Z"
+                  />
+                  <path
+                    class="st3"
+                    d="M316.9,48.8l-81.6,50.7c-1.1-1.1-1.8-2.6-1.8-4.3v-42c0-3.3,2.7-6.1,6.1-6.1h73.2c1.6,0,3.1.6,4.1,1.7Z"
+                  />
+                  <line class="st7" x1="276.5" y1="87.7" x2="312.3" y2="87.7" />
+                  <line class="st7" x1="276.5" y1="93.8" x2="286.1" y2="93.8" />
+                  <line class="st7" x1="289.6" y1="93.8" x2="299.2" y2="93.8" />
+                  <line class="st7" x1="302.6" y1="93.8" x2="312.3" y2="93.8" />
+                </g>
+                <g id="charging" class="st31">
+                  <text class="st30" transform="translate(383.1 220.1)">
+                    <tspan x="0" y="0">CHARGING</tspan>
+                  </text>
+                </g>
+                <g id="Grid">
+                  <path
+                    class="st32"
+                    d="M78.1,36.1c.3-.9,14.3-7.4,15.9-8.9,1-5.8.9-11.8,1.5-17.6l.8-.7c2.7-.6,8.7-5,10.9-4.9.7,0,10.7,4.8,11,5.2l1.9,17.9c1.6,1.4,15.9,8.2,15.9,8.9v4.8c.5,0,1.9,0,2.1,0,.1,0,.1,2.4,0,2.5-.5.4-2.8-1.1-2.1,2,0,.2,3.3.1,2.1,2.7h-7c-1.2-2.6,2.1-2.5,2.1-2.7.7-3.2-1.6-1.7-2.1-2-.1,0-.1-2.4,0-2.5.2-.1,1.9.1,2.1,0,.1,0-.1-2,0-2.5h-12l.8,13,1.6,7c5.6,3.5,11.7,6.6,17.5,9.9v5.8c.5,0,1.9,0,2.1,0,.1,0,.1,2.7,0,2.8-.2.2-2-.3-2.1.2-.7,3.6,1.5,1.9,2.1,2.3.1.1-.1,2.6,0,3.1h-7.9c-1-4,1.9-2.7,2.5-3.1.1,0,0-2,0-2.3,0-.4-1.8.1-2.3-.5-.3-.3-.3-2.4-.2-2.5.2-.1,2.3.1,2.5,0,.1-.1-.1-2.3,0-2.8h-11.2l5.3,21.5c-.2.7-6.3.7-6.8.2l-4.3-21.5h-27.4l-4.2,21.3c-.4.9-5.4.5-6.6.4l5-21.8h-11.2c.1.5-.2,2.7,0,2.8.2.1,2.3-.1,2.5,0,.1,0,0,2.2-.2,2.5-.5.5-2.2.2-2.3.3-.1,0-.1,2.4,0,2.5.2.1,2.1-.3,2.4.5.2.5.2,2.6-.6,2.6h-7c-.8,0-.8-2.1-.6-2.6.4-.9,2.2-.4,2.4-.5s.1-2.4,0-2.5c-.2-.1-1.8.2-2.3-.3-.3-.3-.3-2.4-.2-2.5.1,0,2,0,2.5,0v-5.8l17.2-9.6c2.5-6.6,2-13.6,3.1-20.3h-12.4c0,.5-.1,2.4,0,2.5.2.1,1.9-.1,2.1,0,0,0,0,2-.2,2.2-.5.5-1.8,0-1.9.5-.7,3,1.3,1.6,1.9,2.3.4.5,0,1.6.2,2.2h-7c-1.2-2.6,2.1-2.5,2.1-2.7.7-3.2-1.6-1.7-2.1-2-.1,0-.1-2.4,0-2.5.1,0,1.6,0,2.1,0,.3-1.3-.4-3.7,0-4.8h0ZM114.8,13.3c.3-.3.2-2.1-.1-2.4-.2-.3-6.7-3.3-7.2-3.4-.9,0-1.6.3-2.3.6-.7.3-5.8,2.7-6.1,2.9-.7.6-.7,1.6,0,2.2.4.4,7.1,3.5,7.7,3.5.6,0,7.7-3.1,7.9-3.4h0ZM98.8,15.6v4.9c0,.1-1.1.5.2.5.4-.5,5.6-2.3,5.2-2.8l-5.4-2.5ZM115.3,15.9l-5.4,2.4,5.4,2.7v-5ZM98.4,25.9h17.4c-.2-.6.3-2,0-2.4-.2-.3-8.2-3.8-8.8-3.8s-8.2,3.4-8.5,3.8c-.4.5,0,1.8,0,2.4h0ZM115.8,28.4h-17.8v6.7c0,0-.6.4-.4.8h18.6v-6.7c0-.1-.6-.5-.4-.8h0ZM120.7,35.9h9.5l-9.9-5.6s.4,5.6.4,5.6ZM83.9,35.9h9.5c-.2-.6,1-5.3.2-5.3,0,0-9.7,5.3-9.7,5.3ZM116.6,38.4h-19.1c.2,1-.4,3,.2,3.8.6.7,7.7,3.3,9.1,4,.6,0,9.4-3.8,9.7-4.1.4-.6-.1-2.8,0-3.7h0ZM96.7,51l6.6-3-6-3-.6,6h0ZM117.4,51l-.4-6-6.6,2.8,7,3.1h0ZM118.2,56.3l-.8-2-10.6-4.8c-2.3,1.5-8.2,3-10,4.6-.8.7-.5,1.5-1,2.2h22.4,0ZM93.8,68.2h26.5l-1.7-8.7h-23.1l-1.7,8.7h0ZM125.7,68.2h8.7l-9.9-5.6,1.2,5.6ZM80.1,68.2h8.3l1-5.3-9.3,5.3h0Z"
+                  />
+                </g>
+                <g id="grid_to_charger" style="opacity: 0.08;">
+                  <path class="st33" d="M215.6,80.3v-13.9l12.1,7-12.1,7h0Z" />
+                  <g>
+                    <line class="st4" x1="153" y1="73.4" x2="156" y2="73.4" />
+                    <line
+                      class="st13"
+                      x1="156"
+                      y1="73.4"
+                      x2="162.8"
+                      y2="73.4"
+                    />
+                    <line
+                      class="st18"
+                      x1="164.3"
+                      y1="73.4"
+                      x2="221.4"
+                      y2="73.4"
+                    />
+                    <line class="st4" x1="222" y1="73.4" x2="225" y2="73.4" />
+                  </g>
+                </g>
+                <g id="bypass_or_grid_to_load" style="opacity: 0.08;">
+                  <g>
+                    <line
+                      class="st6"
+                      x1="141.8"
+                      y1="27.7"
+                      x2="144.8"
+                      y2="27.7"
+                    />
+                    <line
+                      class="st17"
+                      x1="144.8"
+                      y1="27.7"
+                      x2="151.3"
+                      y2="27.7"
+                    />
+                    <line
+                      class="st26"
+                      x1="152.8"
+                      y1="27.7"
+                      x2="741.1"
+                      y2="27.7"
+                    />
+                    <line
+                      class="st6"
+                      x1="741.5"
+                      y1="27.7"
+                      x2="744.5"
+                      y2="27.7"
+                    />
+                  </g>
+                  <g>
+                    <line class="st19" x1="743" y1="27.6" x2="743" y2="30.4" />
+                    <line class="st27" x1="743" y1="30.4" x2="743" y2="36.1" />
+                    <line class="st23" x1="743" y1="37.5" x2="743" y2="123.4" />
+                    <line
+                      class="st19"
+                      x1="743"
+                      y1="123.8"
+                      x2="743"
+                      y2="126.6"
+                    />
+                  </g>
+                  <path class="st33" d="M736.1,125.3h13.9l-7,12-7-12.1h0Z" />
+                  <g>
+                    <path
+                      class="st32"
+                      d="M423.6,12.3h-1.2v2.6h1.2c.4,0,.8,0,1-.1s.5-.2.6-.4.2-.4.2-.8-.1-.7-.3-.9c-.2-.2-.8-.4-1.5-.4h0Z"
+                    />
+                    <path
+                      class="st32"
+                      d="M409.4,16.1c-.3-.2-.8-.3-1.4-.3h-1.8v2.5h1.9c1.2,0,1.8-.4,1.8-1.3s-.1-.8-.5-.9h0Z"
+                    />
+                    <polygon
+                      class="st32"
+                      points="429.6 16.3 432.2 16.3 430.9 12.7 429.6 16.3"
+                    />
+                    <path
+                      class="st32"
+                      d="M408.8,14.4c.2,0,.4-.2.5-.5.1-.2.1-.4.1-.6,0-.4-.1-.7-.5-.9s-.8-.2-1.4-.2h-1.4v2.2h1.6c.4,0,.8,0,1-.1h0Z"
+                    />
+                    <path
+                      class="st32"
+                      d="M459.6,5.5h-64.4c-1.3,0-2.3,1-2.3,2.3v14.2c0,1.3,1,2.3,2.3,2.3h64.4c1.3,0,2.3-1,2.3-2.3V7.8c0-1.3-1-2.3-2.3-2.3ZM411.3,18.5c-.2.4-.6.7-1,.9-.3.1-.6.2-.9.2s-.7,0-1.2,0h-2.6c-.4,0-.6,0-.8-.2s-.2-.4-.2-.8v-6.5c0-.4,0-.6.2-.8s.4-.2.8-.2h2.8c.4,0,.8,0,1.1,0s.6.1.8.3c.2.1.4.3.5.5s.3.4.4.6.1.5.1.7c0,.9-.4,1.5-1.3,1.9,1.1.4,1.7,1.1,1.7,2.1s-.1.9-.4,1.3h0ZM419.3,12c0,.1-.2.4-.4.6l-2.1,3.3v2.7c0,.4,0,.6-.2.8s-.4.3-.6.3-.5,0-.6-.3-.2-.4-.2-.8v-2.7l-2.1-3.2c-.2-.3-.3-.5-.4-.7s-.1-.3-.1-.4c0-.2,0-.4.2-.5s.3-.2.6-.2.4,0,.5.2.3.4.5.8l1.6,2.6,1.6-2.6c.1-.2.2-.3.2-.4s.1-.2.2-.3.2-.2.3-.2.2,0,.4,0c.2,0,.4,0,.5.2s.2.3.2.5,0,.3-.1.5h0ZM424,16.3h-1.6v2.4c0,.4,0,.6-.2.8s-.4.3-.6.3-.5,0-.6-.3-.2-.4-.2-.8v-6.6c0-.4,0-.7.3-.8s.5-.2.8-.2h2.2c.7,0,1.2,0,1.5.1.4.1.7.3.9.5s.5.5.6.8.2.7.2,1.1c0,.9-.3,1.5-.8,2-.5.5-1.3.7-2.4.7h0ZM434.7,19.5c-.2.2-.4.2-.6.2s-.2,0-.4,0-.2-.1-.2-.2-.1-.2-.2-.4-.1-.3-.2-.5l-.4-1.1h-3.5l-.4,1.1c-.2.4-.3.7-.4.9s-.3.2-.6.2-.4,0-.6-.2-.2-.3-.2-.5,0-.2,0-.4.1-.3.2-.5l2.2-5.6c0-.2.1-.4.2-.6s.2-.4.3-.6.2-.3.4-.4.4-.1.6-.1.4,0,.6.1.3.2.4.4.2.3.2.5.2.4.3.7l2.2,5.5c.2.4.3.7.3.9s0,.4-.2.5h0ZM442.4,18.4c-.3.4-.7.7-1.2,1s-1.1.4-1.8.4-1.5-.2-2.1-.5c-.4-.2-.7-.5-1-.9s-.4-.8-.4-1.1,0-.4.2-.5.3-.2.6-.2.3,0,.5.2.2.3.3.5c.1.3.2.5.4.7s.3.3.5.5.5.2.9.2.9-.1,1.3-.4.5-.5.5-.9,0-.5-.3-.7-.4-.3-.7-.4-.6-.2-1.1-.3c-.6-.1-1.1-.3-1.5-.5s-.8-.5-1-.8-.4-.8-.4-1.2.1-.9.4-1.3.6-.6,1.1-.9,1.1-.3,1.7-.3,1,0,1.4.2.7.3,1,.5.4.4.6.7.2.5.2.7,0,.4-.2.6-.3.2-.5.2-.4,0-.5-.1-.2-.3-.3-.5c-.2-.3-.3-.6-.6-.8s-.6-.3-1-.3-.8.1-1.1.3-.4.4-.4.7,0,.3.1.4.2.2.4.3.3.2.5.2.5.1.8.2c.5.1.9.2,1.3.4s.7.3,1,.5.5.4.6.7c.2.3.2.7.2,1.1s-.1,1-.4,1.4h0ZM450.4,18.4c-.3.4-.7.7-1.2,1s-1.1.4-1.8.4-1.5-.2-2.1-.5c-.4-.2-.7-.5-1-.9s-.4-.8-.4-1.1,0-.4.2-.5.3-.2.6-.2.3,0,.5.2.2.3.3.5c.1.3.2.5.4.7s.3.3.5.5.5.2.9.2.9-.1,1.3-.4.5-.5.5-.9,0-.5-.3-.7-.4-.3-.7-.4-.6-.2-1.1-.3c-.6-.1-1.1-.3-1.5-.5s-.8-.5-1-.8-.4-.8-.4-1.2.1-.9.4-1.3.6-.6,1.1-.9,1.1-.3,1.7-.3,1,0,1.4.2.7.3,1,.5.4.4.6.7.2.5.2.7,0,.4-.2.6-.3.2-.5.2-.4,0-.5-.1-.2-.3-.3-.5c-.2-.3-.3-.6-.6-.8s-.6-.3-1-.3-.8.1-1.1.3-.4.4-.4.7,0,.3.1.4.2.2.4.3.3.2.5.2.5.1.8.2c.5.1.9.2,1.3.4s.7.3,1,.5.5.4.6.7c.2.3.2.7.2,1.1s-.1,1-.4,1.4h0Z"
+                    />
+                  </g>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <!-- SOLAR CARD -->
+          <div
+            class="bg-black/30 rounded-xl p-3 border-l-4 border-amber-500 hover:bg-black/40 transition"
+          >
+            <div class="flex justify-between items-center">
+              <span class="text-amber-300 text-sm"
+                ><i class="fas fa-sun mr-2"></i>SOLAR</span
+              >
+              <i class="fas fa-bolt text-amber-500/60 text-xs"></i>
+            </div>
+            <div class="mt-2">
+              <span id="solarPowerVal" class="text-3xl font-bold text-amber-300"
+                >--</span
+              ><span class="text-sm text-amber-300"> W</span>
+            </div>
+            <div class="text-xs text-gray-300 font-mono">
+              <span id="solarVoltageVal">346</span>V /
+              <span id="solarCurrentVal">7.5</span>A
+            </div>
+            <div class="w-full bg-gray-800/60 h-1 rounded-full mt-2">
+              <div
+                id="solarBar"
+                class="bg-amber-400 h-1 rounded-full"
+                style="width: 0%; transition: width 0.6s"
+                title="Share of 3000 W rated PV input"
+              ></div>
+            </div>
+          </div>
+          <!-- LOAD CARD -->
+          <div
+            class="bg-black/30 rounded-xl p-3 border-l-4 border-blue-400 hover:bg-black/40 transition"
+          >
+            <div class="flex justify-between">
+              <span class="text-blue-300 text-sm"
+                ><i class="fas fa-plug mr-2"></i>LOAD</span
+              ><i class="fas fa-chart-line text-blue-400/60"></i>
+            </div>
+            <div class="mt-2">
+              <span id="loadPowerVal" class="text-3xl font-bold text-blue-200"
+                >455</span
+              ><span class="text-sm text-blue-300"> W</span>
+            </div>
+            <div class="text-xs text-gray-300 font-mono">
+              <span id="loadVoltageVal">230</span>V /
+              <span id="loadFreqVal">49.9</span>Hz
+            </div>
+            <div class="text-[10px] text-gray-400 mt-1">
+              <i class="far fa-hourglass-half"></i> Apparent:
+              <span id="apparentPower">480</span> VA
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- GRID CARD -->
+          <div class="bg-black/20 rounded-xl p-3 border border-gray-700">
+            <div class="flex items-center gap-2 mb-1">
+              <i class="fas fa-bolt text-slate-300"></i
+              ><span class="text-sm font-semibold uppercase tracking-wide"
+                >GRID</span
+              ><span class="ml-auto text-[9px] bg-gray-800 px-2 rounded-full"
+                >Bidirectional</span
+              >
+            </div>
+            <div>
+              <span id="gridPowerVal" class="text-2xl font-mono font-bold"
+                >0.0</span
+              ><span class="text-xs"> W</span>
+            </div>
+            <div class="text-xs text-gray-400">
+              <span id="gridVoltageVal">230.1</span> V ·
+              <span id="gridFreqVal">49.98</span> Hz
+            </div>
+            <div class="flex gap-3 mt-1 text-[10px]">
+              <span
+                ><i class="fas fa-arrow-down text-green-500"></i> Import:
+                <span id="gridImport">0</span>W</span
+              ><span
+                ><i class="fas fa-arrow-up text-amber-500"></i> Export:
+                <span id="gridExport">0</span>W</span
+              >
+            </div>
+          </div>
+          <!-- BATTERY CARD -->
+          <div class="bg-black/20 rounded-xl p-3 border border-emerald-800">
+            <div class="flex justify-between">
+              <span
+                ><i class="fas fa-car-battery text-emerald-400 mr-2"></i
+                >BATTERY</span
+              ><span
+                id="batteryStateBadge"
+                class="text-[11px] bg-emerald-900/50 px-2 py-0.5 rounded-full text-emerald-200"
+                ><i class="fas fa-charging-station mr-1"></i>CHARGING</span
+              >
+            </div>
+            <div class="flex justify-between items-end mt-1">
+              <div>
+                <span
+                  id="batterySocVal"
+                  class="text-3xl font-bold text-emerald-300"
+                  >75</span
+                ><span class="text-sm">%</span>
+                <div class="text-xs">
+                  <span id="batteryVoltageVal">52.3</span>V ·
+                  <span id="batteryCurrentVal">0.0</span>A
+                </div>
+                <div class="text-[10px] text-gray-400">
+                  Inv: <span id="batteryTemp">--</span>°C
+                </div>
+              </div>
+              <div class="relative w-16 h-16">
+                <div
+                  class="w-full h-full rounded-full border-4 border-emerald-700/50 flex items-center justify-center bg-emerald-900/20"
+                >
+                  <span
+                    class="text-emerald-300 text-xs font-bold"
+                    id="socCircleLabel"
+                    >75%</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                id="batteryBar"
+                class="h-full bg-gradient-to-r from-emerald-500 to-lime-400 rounded-full"
+                style="width: 75%"
+              ></div>
+            </div>
+            <div
+              class="text-[10px] text-emerald-400/80 mt-1 text-right"
+              id="chargeFlowText"
+            >
+              🔋 charging +0.0A
+            </div>
+          </div>
+        </div>
+
+        <!-- Energy Flow Row -->
+        <div
+          class="flex flex-wrap gap-4 mt-4 pt-3 text-xs border-t border-emerald-900/30 justify-between"
+        >
+          <div class="flex gap-4">
+            <div>
+              <i class="fas fa-arrow-up text-amber-400"></i> Solar→Load:
+              <span
+                id="solarToLoadSpan"
+                class="font-mono text-amber-300 font-bold"
+                >455</span
+              >
+              W
+            </div>
+            <div>
+              <i class="fas fa-arrow-down text-emerald-400"></i> Battery→Load:
+              <span id="battToLoadSpan" class="font-mono">0</span> W
+            </div>
+            <div>
+              <i class="fas fa-plug text-gray-400"></i> Grid→Load:
+              <span id="gridToLoadSpan" class="font-mono">0</span> W
+            </div>
+          </div>
+          <div>
+            <i class="far fa-clock"></i>
+            <span id="liveTimestamp">just now</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- POWER TRENDS SECTION -->
+      <div class="glass-card rounded-xl p-5 space-y-5">
+        <div class="flex flex-wrap justify-between items-center">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-chart-line text-emerald-400 text-xl"></i>
+            <h2 class="text-lg font-semibold">Power Trends</h2>
+          </div>
+          <div class="flex gap-2 bg-gray-800/50 rounded-lg p-1">
+            <button
+              id="trendTodayBtn"
+              class="trend-range px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-700 text-white"
+            >
+              Today
+            </button>
+            <button
+              id="trendWeekBtn"
+              class="trend-range px-3 py-1.5 rounded-md text-xs font-medium text-gray-300 hover:bg-gray-700"
+            >
+              7 Days
+            </button>
+          </div>
+        </div>
+        <div class="flex gap-2 border-b border-gray-700 pb-2">
+          <button
+            data-tab="prod"
+            class="chart-tab active-tab px-4 py-1.5 text-sm rounded-t-lg bg-emerald-800/40 text-emerald-200"
+          >
+            <i class="fas fa-solar-panel mr-1"></i>Solar & Load
+          </button>
+          <button
+            data-tab="source"
+            class="chart-tab px-4 py-1.5 text-sm rounded-t-lg text-gray-400"
+          >
+            <i class="fas fa-chart-pie mr-1"></i>Load by Source
+          </button>
+          <button
+            data-tab="battery"
+            class="chart-tab px-4 py-1.5 text-sm rounded-t-lg text-gray-400"
+          >
+            <i class="fas fa-car-battery mr-1"></i>Battery & Grid
+          </button>
+        </div>
+        <div class="w-full h-80 relative">
+          <canvas
+            id="powerChartCanvas"
+            width="800"
+            height="350"
+            style="max-height: 320px; width: 100%"
+          ></canvas>
+        </div>
+        <div
+          class="flex justify-between text-xs text-gray-400 border-t border-gray-700 pt-3 mt-2"
+        >
+          <div>
+            <span class="text-amber-300">● From Solar:</span>
+            <span id="infoSolarVal" class="font-mono">349.0</span> W
+          </div>
+          <div>
+            <span class="text-emerald-300">● From Battery:</span>
+            <span id="infoBattVal" class="font-mono">0.0</span> W
+          </div>
+          <div>
+            <span class="text-blue-300">● From Grid:</span>
+            <span id="infoGridVal" class="font-mono">0.0</span> W
+          </div>
+          <div id="infoTimeLabel" class="text-gray-500">latest: 08:45 AM</div>
+        </div>
+      </div>
+
+      <!-- Weekly Summary Table -->
+      <div id="weeklySummaryContainer" class="glass-card rounded-xl p-5">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-calendar-week text-emerald-400"></i>
+          <h3 class="font-semibold">Weekly Summary</h3>
+          <span
+            id="weekTotalSpan"
+            class="ml-auto text-xs bg-emerald-900/40 px-2 py-1 rounded-full"
+            >12.4 kWh total solar</span
+          >
+        </div>
+        <div class="overflow-x-auto mt-3">
+          <table class="w-full text-xs" id="summaryTable">
+            <thead>
+              <tr class="border-b border-gray-700">
+                <th class="text-left py-2">Day</th>
+                <th class="text-right">Solar kWh</th>
+                <th class="text-right">Load kWh</th>
+                <th class="text-right">Solar→Load</th>
+                <th class="text-right">Batt→Load</th>
+                <th class="text-right">Grid→Load</th>
+              </tr>
+            </thead>
+            <tbody id="summaryTbody">
+              <tr>
+                <td colspan="6" class="text-center py-4 text-gray-500">
+                  Loading demo data...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ======================= ENHANCED INVERTER STATE MACHINE =======================
+      let currentMode = "demo";
+      let serialPort = null;
+      let isSerialConnected = false;
+      let chartInstance = null;
+      let currentChartTab = "prod";
+      let currentTimeRange = "today";
+      let serialReadInterval = null;
+      let rawLogEntries = [];
+
+      let demoFullData = [];
+      let serialHistory = [];
+
+      let latestMetrics = {
+        pvPower: 2600,
+        pvVoltage: 346,
+        pvCurrent: 7.5,
+        loadPower: 455,
+        outputVoltage: 230,
+        outputFrequency: 49.9,
+        apparentPower: 480,
+        batteryPower: 0,
+        batteryVoltage: 52.3,
+        batterySoc: 75,
+        batteryDischargeCurrent: 0,
+        batteryTemp: 28,
+        gridPower: 0,
+        gridVoltage: 230.1,
+        gridFrequency: 49.98,
+        gridImport: 0,
+        gridExport: 0,
+        solarToLoad: 455,
+        batteryToLoad: 0,
+        gridToLoad: 0,
+        invTemp: 48,
+        efficiency: 94.2,
+        fanSpeed: 1200,
+        invStatus: "ONLINE",
+        timestamp: new Date(),
+      };
+
+      function generateDemoHistory() {
+        const data = [];
+        for (let i = 0; i < 48; i++) {
+          let hour = i * 0.5;
+          let solarVal =
+            Math.max(0, Math.sin(((hour - 6) * Math.PI) / 12) * 2200 + 200) *
+            (hour > 5 && hour < 19 ? 1 : 0.2);
+          let loadVal =
+            400 + Math.sin(hour * 0.5) * 120 + (hour > 18 ? 250 : 0);
+          let battPower =
+            solarVal > loadVal
+              ? (solarVal - loadVal) * 0.4
+              : (loadVal - solarVal) * 0.3;
+          let gridPowerVal =
+            loadVal > solarVal && battPower < 80
+              ? Math.max(0, loadVal - solarVal - battPower)
+              : 0;
+          let solarToL = Math.min(loadVal, solarVal);
+          let battToL =
+            loadVal - solarToL > 0
+              ? Math.min(loadVal - solarToL, battPower)
+              : 0;
+          let gridToL = loadVal - solarToL - battToL;
+          let timeLabel = `${Math.floor(hour)}:${(hour % 1) * 60 === 0 ? "00" : "30"}`;
+          data.push({
+            time: timeLabel,
+            timestamp: new Date(2025, 0, 1, Math.floor(hour), (hour % 1) * 60),
+            pvPower: Math.round(solarVal),
+            loadPower: Math.round(loadVal),
+            batteryPower: Math.round(battPower),
+            gridPower: Math.round(gridPowerVal),
+            solarToLoad: Math.round(solarToL),
+            batteryToLoad: Math.round(battToL),
+            gridToLoad: Math.round(gridToL),
+            batterySoc: 50 + Math.sin(hour / 6) * 25,
+            batteryVoltage: 48 + Math.sin(hour / 6) * 4,
+          });
+        }
+        return data;
+      }
+      demoFullData = generateDemoHistory();
+      function getTodayData() {
+        return demoFullData;
+      }
+      function getWeekData() {
+        let week = [];
+        for (let d = 0; d < 7; d++) {
+          demoFullData.forEach((item) => {
+            week.push({
+              ...item,
+              time: `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][d]} ${item.time}`,
+            });
+          });
+        }
+        return week;
+      }
+
+      function updateUIFromMetrics(m) {
+        const set = (id, v) => {
+          const el = document.getElementById(id);
+          if (el) el.innerText = v === null || v === undefined || Number.isNaN(v) ? "--" : v;
+        };
+        const fx = (v, d) => (typeof v === "number" ? v.toFixed(d) : "--");
+        set("solarPowerVal", Math.round(m.pvPower));
+        const solarBar = document.getElementById("solarBar");
+        if (solarBar) solarBar.style.width = `${Math.min(100, Math.max(0, (m.pvPower / 3000) * 100))}%`;
+        set("solarVoltageVal", Math.round(m.pvVoltage));
+        set("solarCurrentVal", fx(m.pvCurrent, 1));
+        set("loadPowerVal", Math.round(m.loadPower));
+        set("loadVoltageVal", fx(m.outputVoltage, 1));
+        set("loadFreqVal", fx(m.outputFrequency, 1));
+        set("apparentPower", m.apparentPower ?? Math.round(m.loadPower * 1.05));
+        set("gridPowerVal", fx(m.gridPower, 0));
+        set("gridVoltageVal", (m.gridVoltageEstimated ? "~" : "") + fx(m.gridVoltage, 1));
+        set("gridFreqVal", fx(m.gridFrequency, 1));
+        set("gridImport", Math.round(m.gridImport || 0));
+        set("gridExport", Math.round(m.gridExport || 0));
+        set("batterySocVal", Math.round(m.batterySoc));
+        set("batteryVoltageVal", fx(m.batteryVoltage, 1));
+        set("batteryCurrentVal", fx(m.batteryDischargeCurrent, 1));
+        set("batteryTemp", typeof m.invTemp === "number" ? Math.round(m.invTemp) : m.batteryTemp);
+        document.getElementById("batteryBar").style.width =
+          `${Math.min(100, Math.max(0, m.batterySoc))}%`;
+        set("socCircleLabel", `${Math.round(m.batterySoc)}%`);
+        let state =
+          m.batteryDischargeCurrent > 0.2
+            ? "CHARGING"
+            : m.batteryDischargeCurrent < -0.2
+              ? "DISCHARGING"
+              : "IDLE";
+        document.getElementById("batteryStateBadge").innerHTML =
+          state === "CHARGING"
+            ? '<i class="fas fa-charging-station mr-1"></i>CHARGING'
+            : state === "DISCHARGING"
+              ? '<i class="fas fa-bolt mr-1"></i>DISCHARGING'
+              : '<i class="fas fa-pause mr-1"></i>IDLE';
+        document.getElementById("chargeFlowText").innerHTML =
+          state === "CHARGING"
+            ? `🔋 charging +${m.batteryDischargeCurrent.toFixed(1)}A`
+            : state === "DISCHARGING"
+              ? `⚡ discharging ${Math.abs(m.batteryDischargeCurrent).toFixed(1)}A`
+              : `🔋 standby`;
+        set("solarToLoadSpan", Math.round(m.solarToLoad));
+        set("battToLoadSpan", Math.round(m.batteryToLoad));
+        set("gridToLoadSpan", Math.round(m.gridToLoad));
+        set("liveTimestamp", new Date().toLocaleTimeString());
+        set("infoSolarVal", Math.round(m.solarToLoad));
+        set("infoBattVal", Math.round(m.batteryToLoad));
+        set("infoGridVal", Math.round(m.gridToLoad));
+        document.getElementById("infoTimeLabel").innerHTML =
+          `latest: ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+        updateFlowDiagram(m);
+        const badge = document.getElementById("invStatusBadge");
+        if (badge) {
+          const st = m.invStatus || "ONLINE";
+          const col =
+            m.workMode === "F" || st === "OFFLINE"
+              ? "text-red-400"
+              : m.workMode === "L"
+                ? "text-sky-400"
+                : st.startsWith("BATTERY")
+                  ? "text-amber-400"
+                  : "text-green-400";
+          badge.innerHTML = `<i class="fas fa-circle text-[6px] ${col}"></i> ${st}`;
+          badge.title = m.faultCode ? `Fault ${m.faultCode}: ${m.faultText}` : m.chargerPriority ? `Charger priority: ${m.chargerPriority}` : "";
+          if (m.faultCode && m.workMode !== "F") badge.innerHTML += ` <span class="text-red-400">· F${m.faultCode}</span>`;
+        }
+      }
+
+      // Mirrors the inverter LCD: active parts at full opacity, inactive ones dimmed
+      const DIM_ICON = 0.2;
+      const DIM_FLOW = 0.08;
+      function svgShow(id, on, dim) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.transition = "opacity 0.6s";
+        el.style.opacity = on ? 1 : dim;
+      }
+      function updateFlowDiagram(m) {
+        const gridOn = m.gridPresent ?? m.gridFrequency > 40;
+        const pvOn = m.pvPower > 5 || m.sccCharging;
+        const charging = m.batteryDischargeCurrent > 0.2 || m.charging;
+        const discharging = m.batteryDischargeCurrent < -0.2;
+        // Prefer the mode the inverter reports (QPGS0); fall back to the power-balance estimate
+        const bypass = m.workMode ? m.workMode === "L" : gridOn && m.gridToLoad > 0; // grid -> load
+        const inverterRunning = m.loadPower > 0 && !bypass; // DC -> AC path feeding the load
+        const acCharging = gridOn && (m.workMode ? !!m.acCharging : m.acCharging || (charging && !pvOn));
+
+        svgShow("Grid", gridOn, DIM_ICON);
+        svgShow("grid_to_charger", acCharging, DIM_FLOW);
+        svgShow("bypass_or_grid_to_load", bypass, DIM_FLOW);
+        svgShow("solar", pvOn, DIM_ICON);
+        svgShow("from_solar_to_charger", pvOn, DIM_FLOW);
+        svgShow("Charger", pvOn || acCharging || discharging || inverterRunning, DIM_ICON);
+        svgShow("from_charger_to_inverter", inverterRunning, DIM_FLOW);
+        svgShow("inverter_to_load", inverterRunning, DIM_FLOW);
+        svgShow("battery", true, DIM_ICON);
+        svgShow("battery_charge_indicator", charging, DIM_FLOW);
+        svgShow("charging", charging, 0);
+        svgShow("Load", m.loadPower > 0, DIM_ICON);
+      }
+
+      function renderChart() {
+        /* same chart logic */ let dataPoints =
+          currentMode === "serial" && serialHistory.length > 0
+            ? serialHistory
+            : currentTimeRange === "today"
+              ? getTodayData()
+              : getWeekData();
+        if (!dataPoints.length) return;
+        let labels = dataPoints.map(
+          (p) =>
+            p.time ||
+            p.timestamp?.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }) ||
+            "",
+        );
+        let datasets = [];
+        if (currentChartTab === "prod") {
+          datasets = [
+            {
+              label: "Solar Power (W)",
+              data: dataPoints.map((p) => p.pvPower),
+              borderColor: "#e8b624",
+              backgroundColor: "#e8b62420",
+              borderWidth: 2,
+              tension: 0.3,
+              fill: true,
+            },
+            {
+              label: "Load Power (W)",
+              data: dataPoints.map((p) => p.loadPower),
+              borderColor: "#3b9ddd",
+              backgroundColor: "#3b9ddd20",
+              borderWidth: 2,
+              tension: 0.3,
+            },
+          ];
+        } else if (currentChartTab === "source") {
+          datasets = [
+            {
+              label: "From Solar (W)",
+              data: dataPoints.map((p) => p.solarToLoad),
+              borderColor: "#e8b624",
+              backgroundColor: "#f0b42930",
+              borderWidth: 2,
+              fill: true,
+            },
+            {
+              label: "From Battery (W)",
+              data: dataPoints.map((p) => p.batteryToLoad),
+              borderColor: "#2ecc71",
+              backgroundColor: "#2ecc7130",
+              borderWidth: 2,
+              fill: true,
+            },
+            {
+              label: "From Grid (W)",
+              data: dataPoints.map((p) => p.gridToLoad),
+              borderColor: "#8b8fa3",
+              backgroundColor: "#8b8fa330",
+              borderWidth: 2,
+              fill: true,
+            },
+          ];
+        } else {
+          datasets = [
+            {
+              label: "Battery Power (W)",
+              data: dataPoints.map((p) => p.batteryPower || 0),
+              borderColor: "#2ecc71",
+              borderWidth: 2,
+            },
+            {
+              label: "Grid Power (W)",
+              data: dataPoints.map((p) => p.gridPower || 0),
+              borderColor: "#8b8fa3",
+              borderWidth: 2,
+            },
+          ];
+        }
+        if (chartInstance) chartInstance.destroy();
+        const ctx = document
+          .getElementById("powerChartCanvas")
+          .getContext("2d");
+        chartInstance = new Chart(ctx, {
+          type: "line",
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: { position: "top", labels: { color: "#ccc" } },
+              tooltip: { mode: "index" },
+            },
+            scales: {
+              y: {
+                grid: { color: "#2a3a44" },
+                title: { display: true, text: "Watts (W)", color: "#aaa" },
+              },
+              x: { ticks: { maxRotation: 45, autoSkip: true, color: "#aaa" } },
+            },
+          },
+        });
+      }
+      function updateWeeklySummary() {
+        let weekData = getWeekData();
+        let dailyMap = new Map();
+        weekData.forEach((p) => {
+          let day = p.time?.split(" ")[0];
+          if (day) {
+            if (!dailyMap.has(day))
+              dailyMap.set(day, {
+                solar: 0,
+                load: 0,
+                solarToL: 0,
+                battToL: 0,
+                gridToL: 0,
+              });
+            let d = dailyMap.get(day);
+            d.solar += p.pvPower / 1000;
+            d.load += p.loadPower / 1000;
+            d.solarToL += p.solarToLoad / 1000;
+            d.battToL += p.batteryToLoad / 1000;
+            d.gridToL += p.gridToLoad / 1000;
+          }
+        });
+        let totalSolar = 0,
+          html = "";
+        for (let [day, vals] of dailyMap.entries()) {
+          totalSolar += vals.solar;
+          html += `<tr class="border-b border-gray-800"><td class="py-2">${day}</td><td class="text-right font-mono">${vals.solar.toFixed(1)}</td><td class="text-right font-mono">${vals.load.toFixed(1)}</td><td class="text-right">${vals.solarToL.toFixed(1)}</td><td class="text-right">${vals.battToL.toFixed(1)}</td><td class="text-right">${vals.gridToL.toFixed(1)}</td></tr>`;
+        }
+        document.getElementById("summaryTbody").innerHTML =
+          html || '<tr><td colspan="6" class="text-center">No data</td></tr>';
+        document.getElementById("weekTotalSpan").innerHTML =
+          `${totalSolar.toFixed(1)} kWh total solar`;
+      }
+      let livePollTimer = null;
+      // Works whether the page is served by inverter_server.py, Live Server, or opened as a file
+      const API = location.port === "8080" ? "" : "http://localhost:8080";
+      function toHistoryPoint(p) {
+        const ts = new Date(p.timestamp);
+        return {
+          ...p,
+          timestamp: ts,
+          time: ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+      }
+      function setLiveStatus(ok, msg) {
+        document.getElementById("serialStatusMsg").innerHTML = msg;
+        document.getElementById("statusText").innerText = ok ? "Live" : "Live (no data)";
+        document.getElementById("statusLed").className = ok
+          ? "w-2 h-2 rounded-full bg-green-500 animate-pulse"
+          : "w-2 h-2 rounded-full bg-red-500";
+      }
+      let liveSource = null; // EventSource (server push)
+      let lastDataAt = 0; // ms timestamp of the last reading received
+      let ageTimer = null;
+
+      // Add one point to the existing chart without rebuilding it (no flicker)
+      function appendPointToChart(p) {
+        if (currentMode !== "serial" || !chartInstance) return renderChart();
+        const ds = chartInstance.data.datasets;
+        const vals =
+          currentChartTab === "prod"
+            ? [p.pvPower, p.loadPower]
+            : currentChartTab === "source"
+              ? [p.solarToLoad, p.batteryToLoad, p.gridToLoad]
+              : [p.batteryPower || 0, p.gridPower || 0];
+        if (ds.length !== vals.length) return renderChart();
+        chartInstance.data.labels.push(p.time);
+        vals.forEach((v, i) => ds[i].data.push(v));
+        if (chartInstance.data.labels.length > 2880) {
+          chartInstance.data.labels.shift();
+          ds.forEach((d) => d.data.shift());
+        }
+        chartInstance.update("none");
+      }
+
+      function handleStatus(st) {
+        document.getElementById("serialErrorMsg").classList.add("hidden");
+        if (!st.metrics) {
+          setLiveStatus(false, `⏳ Bridge up, waiting for inverter on ${st.port}… ${st.error || ""}`);
+          return;
+        }
+        const m = st.metrics;
+        lastDataAt = new Date(m.timestamp).getTime();
+        Object.assign(latestMetrics, m);
+        updateUIFromMetrics(latestMetrics);
+        setLiveStatus(
+          !st.error,
+          `<i class="fas fa-check-circle text-green-500"></i> ${st.port} · ${st.mode} · frames ok ${st.goodFrames} / bad ${st.badFrames}` +
+            (m.gridVoltageEstimated ? " · grid V ≈ output V" : "") +
+            (st.error ? ` · <span class="text-red-400">${st.error}</span>` : ""),
+        );
+        const last = serialHistory[serialHistory.length - 1];
+        if (!last || lastDataAt - last.timestamp >= 30000) {
+          const p = toHistoryPoint(m);
+          serialHistory.push(p);
+          if (serialHistory.length > 2880) serialHistory.shift();
+          appendPointToChart(p);
+        }
+        if (st.raw && !document.getElementById("rawMonitorPanel").classList.contains("hidden")) {
+          rawLogEntries = st.raw;
+          addRawLog("");
+        }
+      }
+
+      function showBridgeDown() {
+        setLiveStatus(false, '<i class="fas fa-times-circle text-red-500"></i> Bridge not reachable – retrying…');
+        const err = document.getElementById("serialErrorMsg");
+        err.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Start it with: <code>python inverter_server.py</code> then open http://localhost:8080';
+        err.classList.remove("hidden");
+      }
+
+      // "updated Xs ago" ticker, so you can see it's live
+      function tickAge() {
+        if (currentMode !== "serial" || !lastDataAt) return;
+        const s = Math.max(0, Math.round((Date.now() - lastDataAt) / 1000));
+        const stale = s > 20;
+        document.getElementById("statusText").innerText = stale ? `Stale · ${s}s ago` : `Live · ${s}s ago`;
+        document.getElementById("statusLed").className = stale
+          ? "w-2 h-2 rounded-full bg-amber-500"
+          : "w-2 h-2 rounded-full bg-green-500 animate-pulse";
+      }
+
+      function stopLive() {
+        if (liveSource) liveSource.close();
+        liveSource = null;
+        if (livePollTimer) clearInterval(livePollTimer);
+        livePollTimer = null;
+      }
+
+      async function connectSerial() {
+        stopLive();
+        document.getElementById("serialErrorMsg").classList.add("hidden");
+        try {
+          const hist = await (await fetch(API + "/api/history")).json();
+          serialHistory = hist.map(toHistoryPoint);
+        } catch (e) {}
+        isSerialConnected = true;
+        renderChart();
+        if (!ageTimer) ageTimer = setInterval(tickAge, 1000);
+
+        if ("EventSource" in window) {
+          // Server pushes each new reading the moment it is decoded
+          liveSource = new EventSource(API + "/api/stream");
+          liveSource.onmessage = (ev) => handleStatus(JSON.parse(ev.data));
+          liveSource.onerror = () => showBridgeDown(); // EventSource reconnects by itself
+        } else {
+          // Fallback: ask every 3 s
+          const poll = async () => {
+            try {
+              handleStatus(await (await fetch(API + "/api/status", { cache: "no-store" })).json());
+            } catch (e) {
+              showBridgeDown();
+            }
+          };
+          poll();
+          livePollTimer = setInterval(poll, 3000);
+        }
+      }
+      function addRawLog(msg) {
+        if (msg) {
+          rawLogEntries.unshift(`${new Date().toLocaleTimeString()} ${msg}`);
+          if (rawLogEntries.length > 30) rawLogEntries.pop();
+        }
+        document.getElementById("rawDataLog").innerHTML = rawLogEntries
+          .map((e) => `<div class="border-b border-gray-800 py-0.5 whitespace-pre">${e.replace(/</g, "&lt;")}</div>`)
+          .join("");
+      }
+      let demoInterval;
+      function startDemoRealtime() {
+        if (demoInterval) clearInterval(demoInterval);
+        demoInterval = setInterval(() => {
+          let base =
+            demoFullData[Math.floor(Date.now() / 30000) % demoFullData.length];
+          let gridBypassSim = Math.random() > 0.7;
+          latestMetrics = {
+            ...base,
+            pvPower: Math.max(
+              0,
+              base.pvPower + Math.sin(Date.now() / 5000) * 50,
+            ),
+            loadPower: Math.max(
+              100,
+              base.loadPower + Math.sin(Date.now() / 4000) * 40,
+            ),
+            solarToLoad: Math.min(base.loadPower, base.pvPower),
+            batteryToLoad: gridBypassSim ? 10 : 20,
+            gridToLoad: gridBypassSim
+              ? base.loadPower - Math.min(base.loadPower, base.pvPower)
+              : 0,
+            batterySoc: 55 + Math.sin(Date.now() / 10000) * 20,
+            batteryDischargeCurrent: Math.abs(Math.sin(Date.now() / 8000)) * 2,
+            invTemp: 46 + Math.random() * 4,
+            efficiency: 93 + Math.random() * 3,
+            gridPower: gridBypassSim ? 150 : 0,
+          };
+          updateUIFromMetrics(latestMetrics);
+          if (currentMode === "demo") renderChart();
+        }, 1800);
+      }
+      function setMode(mode) {
+        currentMode = mode;
+        if (mode === "demo") {
+          stopLive();
+          isSerialConnected = false;
+          document.getElementById("serialPanel").classList.add("hidden");
+          document.getElementById("statusText").innerText = "Demo Mode";
+          document.getElementById("statusLed").className =
+            "w-2 h-2 rounded-full bg-gray-500";
+          startDemoRealtime();
+          renderChart();
+          updateWeeklySummary();
+        } else {
+          document.getElementById("serialPanel").classList.remove("hidden");
+          document.getElementById("statusText").innerText = "Live (connecting)";
+          if (demoInterval) clearInterval(demoInterval);
+          connectSerial();
+          renderChart();
+        }
+        document.getElementById("demoModeBtn").className =
+          mode === "demo"
+            ? "mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white flex items-center gap-2"
+            : "mode-switch px-4 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white flex items-center gap-2";
+        document.getElementById("serialModeBtn").className =
+          mode === "serial"
+            ? "mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white flex items-center gap-2"
+            : "mode-switch px-4 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white flex items-center gap-2";
+      }
+      document.getElementById("demoModeBtn").onclick = () => setMode("demo");
+      document.getElementById("serialModeBtn").onclick = () =>
+        setMode("serial");
+      document.getElementById("serialConnectBtn").onclick = async () => {
+        try {
+          await connectSerial();
+        } catch (e) {
+          document.getElementById("serialErrorMsg").innerHTML =
+            `<i class="fas fa-exclamation-triangle"></i> ${e.message}`;
+          document.getElementById("serialErrorMsg").classList.remove("hidden");
+        }
+      };
+      document.getElementById("serialRawMonitorBtn").onclick = () => {
+        document.getElementById("rawMonitorPanel").classList.toggle("hidden");
+      };
+      document.getElementById("clearRawBtn").onclick = () => {
+        rawLogEntries = [];
+        document.getElementById("rawDataLog").innerHTML = "";
+      };
+      document.getElementById("trendTodayBtn").onclick = () => {
+        currentTimeRange = "today";
+        document.getElementById("trendTodayBtn").className =
+          "trend-range px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-700 text-white";
+        document.getElementById("trendWeekBtn").className =
+          "trend-range px-3 py-1.5 rounded-md text-xs font-medium text-gray-300";
+        renderChart();
+      };
+      document.getElementById("trendWeekBtn").onclick = () => {
+        currentTimeRange = "week";
+        document.getElementById("trendWeekBtn").className =
+          "trend-range px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-700 text-white";
+        document.getElementById("trendTodayBtn").className =
+          "trend-range px-3 py-1.5 rounded-md text-xs font-medium text-gray-300";
+        renderChart();
+      };
+      document.querySelectorAll(".chart-tab").forEach((btn) => {
+        btn.onclick = () => {
+          document
+            .querySelectorAll(".chart-tab")
+            .forEach((b) =>
+              b.classList.remove(
+                "active-tab",
+                "bg-emerald-800/40",
+                "text-emerald-200",
+              ),
+            );
+          btn.classList.add(
+            "active-tab",
+            "bg-emerald-800/40",
+            "text-emerald-200",
+          );
+          currentChartTab = btn.dataset.tab;
+          renderChart();
+        };
+      });
+      setMode("serial");
+      updateWeeklySummary();
+      renderChart();
+    </script>
+  </body>
+</html>

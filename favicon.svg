@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6ee7b7"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <!-- tile -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0b1418" stroke="#10b981" stroke-opacity="0.55" stroke-width="3"/>
+  <!-- sun -->
+  <g stroke="#fbbf24" stroke-width="3.5" stroke-linecap="round">
+    <line x1="22" y1="8.5" x2="22" y2="12.5"/>
+    <line x1="8.5" y1="22" x2="12.5" y2="22"/>
+    <line x1="12.5" y1="12.5" x2="15.3" y2="15.3"/>
+    <line x1="31.5" y1="12.5" x2="28.7" y2="15.3"/>
+    <line x1="12.5" y1="31.5" x2="15.3" y2="28.7"/>
+  </g>
+  <circle cx="22" cy="22" r="7.5" fill="#fbbf24"/>
+  <!-- bolt -->
+  <path d="M38 10 L22 36 H32 L27 55 L46 27 H35.5 L41 10 Z" fill="url(#bolt)" stroke="#0b1418" stroke-width="2.5" stroke-linejoin="round"/>
+</svg>

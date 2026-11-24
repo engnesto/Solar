@@ -471,6 +471,8 @@ def make_handler(inv: Inverter):
                 return self._json({"last": inv.last_raw, "log": list(inv.raw_log)})
             if p == "/api/stream":
                 return self._stream()
+            if p == "/api/days":
+                return self._json(daily_energy(7))
             if p == "/api/query":
                 # Read-only diagnostics, e.g. /api/query?cmd=QPGS0 (only Q... query commands)
                 from urllib.parse import parse_qs, urlparse
@@ -487,6 +489,42 @@ def make_handler(inv: Inverter):
             return super().do_GET()
 
     return H
+
+
+def daily_energy(days=7):
+    """Per-day kWh totals from the CSV logs (integrates each power column over time)."""
+    from datetime import timedelta
+    out = []
+    today = datetime.now().date()
+    for i in range(days - 1, -1, -1):
+        day = today - timedelta(days=i)
+        path = os.path.join(LOG_DIR, f"{day:%Y-%m-%d}.csv")
+        if not os.path.exists(path):
+            continue
+        tot = {"solar": 0.0, "load": 0.0, "solarToLoad": 0.0, "battToLoad": 0.0, "gridToLoad": 0.0}
+        prev = None
+        with open(path, newline="") as fh:
+            for row in csv.DictReader(fh):
+                try:
+                    t = datetime.fromisoformat(row["timestamp"])
+                    load, pv = float(row["loadPower"]), float(row["pvPower"])
+                    bp, gp = float(row["batteryPower"]), float(row.get("gridPower") or 0)
+                except (KeyError, ValueError, TypeError):
+                    continue
+                dt = 30.0 if prev is None else min(120.0, max(0.0, (t - prev).total_seconds()))
+                prev = t
+                h = dt / 3600.0 / 1000.0  # W·s -> kWh
+                s2l = min(load, pv)
+                b2l = min(load - s2l, max(0.0, -bp))
+                g2l = max(0.0, load - s2l - b2l) if gp > 0 else 0.0
+                tot["solar"] += pv * h
+                tot["load"] += load * h
+                tot["solarToLoad"] += s2l * h
+                tot["battToLoad"] += b2l * h
+                tot["gridToLoad"] += g2l * h
+        out.append({"day": f"{day:%a %d %b}", "date": f"{day:%Y-%m-%d}",
+                    **{k: round(v, 2) for k, v in tot.items()}})
+    return out
 
 
 def load_today_history(inv: Inverter):

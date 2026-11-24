@@ -7,6 +7,8 @@
       content="width=device-width, initial-scale=1.0, user-scalable=yes"
     />
     <title>PowerGray · PowerWatch · MPS 5KVA-60 Inverter Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <meta name="theme-color" content="#0b1418" />
     <!-- Tailwind + Font Awesome + Chart.js -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -268,8 +270,7 @@
               <span
                 id="invStatusBadge"
                 class="text-[10px] bg-emerald-900/50 px-2 py-0.5 rounded-full flex items-center gap-1"
-                ><i class="fas fa-circle text-[6px] text-green-400"></i>
-                ONLINE</span
+                ><i class="fas fa-circle text-[6px] text-gray-400"></i> WAITING</span
               >
             </div>
             <div class="mt-2 flex items-center justify-between">
@@ -748,7 +749,7 @@
                     />
                   </g>
                 </g>
-                <g id="inverter_to_load">
+                <g id="Inverter">
                   <g class="st35">
                     <path
                       class="st39"
@@ -767,6 +768,8 @@
                   <line class="st7" x1="529.4" y1="61.1" x2="539.1" y2="61.1" />
                   <line class="st7" x1="542.5" y1="61.1" x2="552.2" y2="61.1" />
                   <line class="st7" x1="555.6" y1="61.1" x2="565.2" y2="61.1" />
+                </g>
+                <g id="inverter_to_load">
                   <line class="st19" x1="612" y1="69.3" x2="615" y2="69.3" />
                   <line class="st5" x1="615" y1="69.3" x2="621.8" y2="69.3" />
                   <line class="st2" x1="623.4" y1="69.3" x2="711" y2="69.3" />
@@ -782,6 +785,8 @@
                   <line class="st0" x1="713" y1="79.4" x2="713" y2="123.3" />
                   <line class="st19" x1="713" y1="123.8" x2="713" y2="126.8" />
                   <path class="st33" d="M706,125.3h13.9l-7,12-7-12.1h0Z" />
+                </g>
+                <g id="battery_to_inverter">
                   <line
                     class="st19"
                     x1="437.4"
@@ -884,7 +889,7 @@
                   <line class="st21" x1="277" y1="126.3" x2="277" y2="184.9" />
                   <line class="st4" x1="277" y1="185.4" x2="277" y2="188.4" />
                 </g>
-                <g id="Charger">
+                <g id="charger_to_battery">
                   <line
                     class="st19"
                     x1="327.1"
@@ -912,6 +917,8 @@
                   <line class="st25" x1="406" y1="90.8" x2="406" y2="130" />
                   <line class="st19" x1="406" y1="130.5" x2="406" y2="133.3" />
                   <path class="st33" d="M398.6,126.7h13.9l-7,12.1-7-12.1h0Z" />
+                </g>
+                <g id="Charger">
                   <g class="st38">
                     <path
                       class="st39"
@@ -1041,24 +1048,32 @@
               <span class="text-amber-300 text-sm"
                 ><i class="fas fa-sun mr-2"></i>SOLAR</span
               >
-              <i class="fas fa-bolt text-amber-500/60 text-xs"></i>
+              <span id="solarStateTag" class="text-[10px] text-amber-500/80 font-mono"
+                ><i class="fas fa-bolt text-xs"></i
+              ></span>
             </div>
-            <div class="mt-2">
-              <span id="solarPowerVal" class="text-3xl font-bold text-amber-300"
-                >--</span
-              ><span class="text-sm text-amber-300"> W</span>
-            </div>
-            <div class="text-xs text-gray-300 font-mono">
-              <span id="solarVoltageVal">346</span>V /
-              <span id="solarCurrentVal">7.5</span>A
-            </div>
-            <div class="w-full bg-gray-800/60 h-1 rounded-full mt-2">
-              <div
-                id="solarBar"
-                class="bg-amber-400 h-1 rounded-full"
-                style="width: 0%; transition: width 0.6s"
-                title="Share of 3000 W rated PV input"
-              ></div>
+            <div class="flex justify-between items-end mt-1">
+              <div>
+                <div class="mt-1">
+                  <span id="solarPowerVal" class="text-3xl font-bold text-amber-300"
+                    >--</span
+                  ><span class="text-sm text-amber-300"> W</span>
+                </div>
+                <div class="text-xs text-gray-300 font-mono">
+                  <span id="solarVoltageVal">--</span>V /
+                  <span id="solarCurrentVal">--</span>A
+                </div>
+              </div>
+              <div class="relative w-16 h-16 shrink-0" title="Share of 3000 W rated solar input">
+                <svg viewBox="0 0 64 64" class="w-full h-full" style="transform: rotate(-90deg)">
+                  <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(245,158,11,0.18)" stroke-width="6" />
+                  <circle id="solarRing" cx="32" cy="32" r="27" fill="none" stroke="#fbbf24" stroke-width="6"
+                    stroke-linecap="round" stroke-dasharray="169.65" stroke-dashoffset="169.65"
+                    style="transition: stroke-dashoffset 0.6s, stroke 0.6s" />
+                </svg>
+                <span id="solarRingLabel"
+                  class="absolute inset-0 flex items-center justify-center text-xs font-bold text-amber-300">--%</span>
+              </div>
             </div>
           </div>
           <!-- LOAD CARD -->
@@ -1070,18 +1085,32 @@
                 ><i class="fas fa-plug mr-2"></i>LOAD</span
               ><i class="fas fa-chart-line text-blue-400/60"></i>
             </div>
-            <div class="mt-2">
-              <span id="loadPowerVal" class="text-3xl font-bold text-blue-200"
-                >455</span
-              ><span class="text-sm text-blue-300"> W</span>
-            </div>
-            <div class="text-xs text-gray-300 font-mono">
-              <span id="loadVoltageVal">230</span>V /
-              <span id="loadFreqVal">49.9</span>Hz
-            </div>
-            <div class="text-[10px] text-gray-400 mt-1">
-              <i class="far fa-hourglass-half"></i> Apparent:
-              <span id="apparentPower">480</span> VA
+            <div class="flex justify-between items-end mt-1">
+              <div>
+                <div class="mt-1">
+                  <span id="loadPowerVal" class="text-3xl font-bold text-blue-200"
+                    >--</span
+                  ><span class="text-sm text-blue-300"> W</span>
+                </div>
+                <div class="text-xs text-gray-300 font-mono">
+                  <span id="loadVoltageVal">--</span>V /
+                  <span id="loadFreqVal">--</span>Hz
+                </div>
+                <div class="text-[10px] text-gray-400 mt-1">
+                  <i class="far fa-hourglass-half"></i> Apparent:
+                  <span id="apparentPower">--</span> VA
+                </div>
+              </div>
+              <div class="relative w-16 h-16 shrink-0" title="Inverter load (% of rated output)">
+                <svg viewBox="0 0 64 64" class="w-full h-full" style="transform: rotate(-90deg)">
+                  <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(96,165,250,0.18)" stroke-width="6" />
+                  <circle id="loadRing" cx="32" cy="32" r="27" fill="none" stroke="#60a5fa" stroke-width="6"
+                    stroke-linecap="round" stroke-dasharray="169.65" stroke-dashoffset="169.65"
+                    style="transition: stroke-dashoffset 0.6s, stroke 0.6s" />
+                </svg>
+                <span id="loadRingLabel"
+                  class="absolute inset-0 flex items-center justify-center text-xs font-bold text-blue-200">--%</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1099,20 +1128,20 @@
             </div>
             <div>
               <span id="gridPowerVal" class="text-2xl font-mono font-bold"
-                >0.0</span
+                >--</span
               ><span class="text-xs"> W</span>
             </div>
             <div class="text-xs text-gray-400">
-              <span id="gridVoltageVal">230.1</span> V ·
-              <span id="gridFreqVal">49.98</span> Hz
+              <span id="gridVoltageVal">--</span> V ·
+              <span id="gridFreqVal">--</span> Hz
             </div>
             <div class="flex gap-3 mt-1 text-[10px]">
               <span
                 ><i class="fas fa-arrow-down text-green-500"></i> Import:
-                <span id="gridImport">0</span>W</span
+                <span id="gridImport">--</span>W</span
               ><span
                 ><i class="fas fa-arrow-up text-amber-500"></i> Export:
-                <span id="gridExport">0</span>W</span
+                <span id="gridExport">--</span>W</span
               >
             </div>
           </div>
@@ -1125,7 +1154,7 @@
               ><span
                 id="batteryStateBadge"
                 class="text-[11px] bg-emerald-900/50 px-2 py-0.5 rounded-full text-emerald-200"
-                ><i class="fas fa-charging-station mr-1"></i>CHARGING</span
+                ><i class="fas fa-hourglass-half mr-1"></i>WAITING</span
               >
             </div>
             <div class="flex justify-between items-end mt-1">
@@ -1133,41 +1162,38 @@
                 <span
                   id="batterySocVal"
                   class="text-3xl font-bold text-emerald-300"
-                  >75</span
+                  >--</span
                 ><span class="text-sm">%</span>
                 <div class="text-xs">
-                  <span id="batteryVoltageVal">52.3</span>V ·
-                  <span id="batteryCurrentVal">0.0</span>A
+                  <span id="batteryVoltageVal">--</span>V ·
+                  <span id="batteryCurrentVal">--</span>A
                 </div>
                 <div class="text-[10px] text-gray-400">
                   Inv: <span id="batteryTemp">--</span>°C
                 </div>
               </div>
-              <div class="relative w-16 h-16">
-                <div
-                  class="w-full h-full rounded-full border-4 border-emerald-700/50 flex items-center justify-center bg-emerald-900/20"
-                >
-                  <span
-                    class="text-emerald-300 text-xs font-bold"
-                    id="socCircleLabel"
-                    >75%</span
-                  >
-                </div>
+              <div class="relative w-16 h-16 shrink-0" title="Battery state of charge">
+                <svg viewBox="0 0 64 64" class="w-full h-full" style="transform: rotate(-90deg)">
+                  <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(16,185,129,0.18)" stroke-width="6" />
+                  <circle id="socRing" cx="32" cy="32" r="27" fill="none" stroke="#34d399" stroke-width="6"
+                    stroke-linecap="round" stroke-dasharray="169.65" stroke-dashoffset="169.65"
+                    style="transition: stroke-dashoffset 0.6s, stroke 0.6s" />
+                </svg>
+                <span id="socCircleLabel"
+                  class="absolute inset-0 flex items-center justify-center text-xs font-bold text-emerald-300">--%</span>
               </div>
             </div>
             <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
               <div
                 id="batteryBar"
                 class="h-full bg-gradient-to-r from-emerald-500 to-lime-400 rounded-full"
-                style="width: 75%"
+                style="width: 0%"
               ></div>
             </div>
             <div
               class="text-[10px] text-emerald-400/80 mt-1 text-right"
               id="chargeFlowText"
-            >
-              🔋 charging +0.0A
-            </div>
+            >waiting for data…</div>
           </div>
         </div>
 
@@ -1181,22 +1207,22 @@
               <span
                 id="solarToLoadSpan"
                 class="font-mono text-amber-300 font-bold"
-                >455</span
+                >--</span
               >
               W
             </div>
             <div>
               <i class="fas fa-arrow-down text-emerald-400"></i> Battery→Load:
-              <span id="battToLoadSpan" class="font-mono">0</span> W
+              <span id="battToLoadSpan" class="font-mono">--</span> W
             </div>
             <div>
               <i class="fas fa-plug text-gray-400"></i> Grid→Load:
-              <span id="gridToLoadSpan" class="font-mono">0</span> W
+              <span id="gridToLoadSpan" class="font-mono">--</span> W
             </div>
           </div>
           <div>
             <i class="far fa-clock"></i>
-            <span id="liveTimestamp">just now</span>
+            <span id="liveTimestamp">--</span>
           </div>
         </div>
       </div>
@@ -1256,17 +1282,17 @@
         >
           <div>
             <span class="text-amber-300">● From Solar:</span>
-            <span id="infoSolarVal" class="font-mono">349.0</span> W
+            <span id="infoSolarVal" class="font-mono">--</span> W
           </div>
           <div>
             <span class="text-emerald-300">● From Battery:</span>
-            <span id="infoBattVal" class="font-mono">0.0</span> W
+            <span id="infoBattVal" class="font-mono">--</span> W
           </div>
           <div>
             <span class="text-blue-300">● From Grid:</span>
-            <span id="infoGridVal" class="font-mono">0.0</span> W
+            <span id="infoGridVal" class="font-mono">--</span> W
           </div>
-          <div id="infoTimeLabel" class="text-gray-500">latest: 08:45 AM</div>
+          <div id="infoTimeLabel" class="text-gray-500">latest: --</div>
         </div>
       </div>
 
@@ -1278,7 +1304,7 @@
           <span
             id="weekTotalSpan"
             class="ml-auto text-xs bg-emerald-900/40 px-2 py-1 rounded-full"
-            >12.4 kWh total solar</span
+            >-- kWh total solar</span
           >
         </div>
         <div class="overflow-x-auto mt-3">
@@ -1296,7 +1322,7 @@
             <tbody id="summaryTbody">
               <tr>
                 <td colspan="6" class="text-center py-4 text-gray-500">
-                  Loading demo data...
+                  --
                 </td>
               </tr>
             </tbody>
@@ -1404,6 +1430,50 @@
         return week;
       }
 
+      // Reset every reading to "--" (used when entering Live mode, before real data arrives)
+      function clearFigures() {
+        [
+          "solarPowerVal", "solarVoltageVal", "solarCurrentVal", "loadPowerVal", "loadVoltageVal",
+          "loadFreqVal", "apparentPower", "gridPowerVal", "gridVoltageVal", "gridFreqVal", "gridImport",
+          "gridExport", "batterySocVal", "batteryVoltageVal", "batteryCurrentVal", "batteryTemp",
+          "solarToLoadSpan", "battToLoadSpan", "gridToLoadSpan", "infoSolarVal", "infoBattVal",
+          "infoGridVal", "liveTimestamp",
+        ].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.innerText = "--";
+        });
+        ["solarRingLabel", "loadRingLabel", "socCircleLabel"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.innerText = "--%";
+        });
+        ["solarRing", "loadRing", "socRing"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.style.strokeDashoffset = 169.65;
+        });
+        const bar = document.getElementById("batteryBar");
+        if (bar) bar.style.width = "0%";
+        document.getElementById("chargeFlowText").innerText = "waiting for data…";
+        document.getElementById("infoTimeLabel").innerText = "latest: --";
+        document.getElementById("batteryStateBadge").innerHTML = '<i class="fas fa-hourglass-half mr-1"></i>WAITING';
+        document.getElementById("invStatusBadge").innerHTML = '<i class="fas fa-circle text-[6px] text-gray-400"></i> WAITING';
+        setDiagramOffline(true);
+      }
+
+      const RING_C = 2 * Math.PI * 27; // circumference for r=27 → 169.65
+      function setRing(ringId, labelId, pct, color) {
+        const ring = document.getElementById(ringId);
+        if (!ring || typeof pct !== "number" || Number.isNaN(pct)) return;
+        const p = Math.min(100, Math.max(0, pct));
+        // keep a tiny visible arc for small non-zero values
+        const shown = p > 0 && p < 2 ? 2 : p;
+        ring.style.strokeDashoffset = RING_C * (1 - shown / 100);
+        ring.style.stroke = color;
+        if (labelId) {
+          const lbl = document.getElementById(labelId);
+          if (lbl) lbl.innerText = `${Math.round(p)}%`;
+        }
+      }
+
       function updateUIFromMetrics(m) {
         const set = (id, v) => {
           const el = document.getElementById(id);
@@ -1411,8 +1481,12 @@
         };
         const fx = (v, d) => (typeof v === "number" ? v.toFixed(d) : "--");
         set("solarPowerVal", Math.round(m.pvPower));
-        const solarBar = document.getElementById("solarBar");
-        if (solarBar) solarBar.style.width = `${Math.min(100, Math.max(0, (m.pvPower / 3000) * 100))}%`;
+        // Progress rings (solar = % of 3000 W PV rating, load = inverter load %, battery = SOC)
+        const solarPct = (m.pvPower / 3000) * 100;
+        setRing("solarRing", "solarRingLabel", solarPct, "#fbbf24");
+        const loadPct = typeof m.loadPercent === "number" ? m.loadPercent : (m.loadPower / 4000) * 100;
+        setRing("loadRing", "loadRingLabel", loadPct, loadPct >= 90 ? "#f87171" : loadPct >= 70 ? "#fbbf24" : "#60a5fa");
+        setRing("socRing", null, m.batterySoc, m.batterySoc <= 20 ? "#f87171" : m.batterySoc <= 50 ? "#fbbf24" : "#34d399");
         set("solarVoltageVal", Math.round(m.pvVoltage));
         set("solarCurrentVal", fx(m.pvCurrent, 1));
         set("loadPowerVal", Math.round(m.loadPower));
@@ -1485,38 +1559,83 @@
         el.style.transition = "opacity 0.6s";
         el.style.opacity = on ? 1 : dim;
       }
+      // Grey out the whole diagram when there is no live data (waiting / bridge down / stale)
+      const FLOW_IDS = [
+        "grid_to_charger", "bypass_or_grid_to_load", "from_solar_to_charger", "charger_to_battery",
+        "from_charger_to_inverter", "battery_to_inverter", "inverter_to_load", "battery_charge_indicator",
+      ];
+      function setDiagramOffline(off) {
+        const svg = document.getElementById("Layer_1");
+        if (!svg) return;
+        svg.style.transition = "filter 0.6s, opacity 0.6s";
+        svg.style.filter = off ? "grayscale(1)" : "";
+        svg.style.opacity = off ? 0.35 : 1;
+        if (off) {
+          FLOW_IDS.forEach((id) => svgShow(id, false, DIM_FLOW));
+          svgShow("charging", false, 0);
+        }
+      }
+
       function updateFlowDiagram(m) {
+        // In Live mode, only draw the flows from a fresh reading
+        const stale = currentMode === "serial" && (!lastDataAt || Date.now() - lastDataAt > 20000);
+        setDiagramOffline(stale);
+        if (stale) return;
         const gridOn = m.gridPresent ?? m.gridFrequency > 40;
-        const pvOn = m.pvPower > 5 || m.sccCharging;
-        const charging = m.batteryDischargeCurrent > 0.2 || m.charging;
+        // Solar "available" = panels have voltage; "producing" = current actually flowing.
+        // When a cloud passes, the MPPT drops out and re-tracks: voltage stays, current goes to 0.
+        const pvAvailable = m.pvVoltage >= 30;
+        const pvProducing = m.pvPower > 5 || m.pvCurrent > 0.2;
+        const charging = m.batteryDischargeCurrent > 0.2;
         const discharging = m.batteryDischargeCurrent < -0.2;
         // Prefer the mode the inverter reports (QPGS0); fall back to the power-balance estimate
         const bypass = m.workMode ? m.workMode === "L" : gridOn && m.gridToLoad > 0; // grid -> load
         const inverterRunning = m.loadPower > 0 && !bypass; // DC -> AC path feeding the load
-        const acCharging = gridOn && (m.workMode ? !!m.acCharging : m.acCharging || (charging && !pvOn));
+        const acCharging = gridOn && (m.workMode ? !!m.acCharging : m.acCharging || (charging && !pvProducing));
+        const chargerActive = pvProducing || acCharging;
 
         svgShow("Grid", gridOn, DIM_ICON);
         svgShow("grid_to_charger", acCharging, DIM_FLOW);
         svgShow("bypass_or_grid_to_load", bypass, DIM_FLOW);
-        svgShow("solar", pvOn, DIM_ICON);
-        svgShow("from_solar_to_charger", pvOn, DIM_FLOW);
-        svgShow("Charger", pvOn || acCharging || discharging || inverterRunning, DIM_ICON);
-        svgShow("from_charger_to_inverter", inverterRunning, DIM_FLOW);
+        svgShow("solar", pvAvailable, DIM_ICON);
+        svgShow("from_solar_to_charger", pvProducing, DIM_FLOW);
+        svgShow("Charger", chargerActive, DIM_ICON);
+        svgShow("charger_to_battery", charging && chargerActive, DIM_FLOW);
+        svgShow("from_charger_to_inverter", inverterRunning && pvProducing, DIM_FLOW); // solar straight to load
+        svgShow("battery_to_inverter", inverterRunning && (discharging || !pvProducing), DIM_FLOW);
+        svgShow("Inverter", inverterRunning, DIM_ICON);
         svgShow("inverter_to_load", inverterRunning, DIM_FLOW);
         svgShow("battery", true, DIM_ICON);
         svgShow("battery_charge_indicator", charging, DIM_FLOW);
         svgShow("charging", charging, 0);
         svgShow("Load", m.loadPower > 0, DIM_ICON);
+
+        const tag = document.getElementById("solarStateTag");
+        if (tag && m.pvVoltage !== undefined) {
+          tag.innerHTML = pvProducing
+            ? '<i class="fas fa-bolt"></i> PRODUCING'
+            : pvAvailable
+              ? '<i class="fas fa-cloud-sun"></i> AVAILABLE · IDLE'
+              : '<i class="fas fa-moon"></i> NO SUN';
+          tag.title = pvAvailable && !pvProducing
+            ? "Panels have voltage but no current – e.g. MPPT re-tracking after a cloud, or nothing to charge"
+            : "";
+        }
       }
 
       function renderChart() {
-        /* same chart logic */ let dataPoints =
-          currentMode === "serial" && serialHistory.length > 0
+        // Live mode only ever shows real readings (empty chart until data arrives)
+        let dataPoints =
+          currentMode === "serial"
             ? serialHistory
             : currentTimeRange === "today"
               ? getTodayData()
               : getWeekData();
-        if (!dataPoints.length) return;
+        if (!dataPoints.length) {
+          if (chartInstance) chartInstance.destroy();
+          chartInstance = null;
+          return;
+        }
         let labels = dataPoints.map(
           (p) =>
             p.time ||
@@ -1614,7 +1733,37 @@
           },
         });
       }
+      // Live mode: real per-day kWh totals computed by the server from its CSV logs
+      async function updateLiveWeeklySummary() {
+        const tbody = document.getElementById("summaryTbody");
+        try {
+          const days = await (await fetch(API + "/api/days", { cache: "no-store" })).json();
+          if (!days.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">No logged days yet</td></tr>';
+            document.getElementById("weekTotalSpan").innerHTML = "-- kWh total solar";
+            return;
+          }
+          let total = 0;
+          tbody.innerHTML = days
+            .map((d) => {
+              total += d.solar;
+              return `<tr class="border-b border-gray-800"><td class="py-2">${d.day}</td><td class="text-right font-mono">${d.solar.toFixed(2)}</td><td class="text-right font-mono">${d.load.toFixed(2)}</td><td class="text-right">${d.solarToLoad.toFixed(2)}</td><td class="text-right">${d.battToLoad.toFixed(2)}</td><td class="text-right">${d.gridToLoad.toFixed(2)}</td></tr>`;
+            })
+            .join("");
+          document.getElementById("weekTotalSpan").innerHTML = `${total.toFixed(2)} kWh total solar`;
+        } catch (e) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">-- (bridge not reachable)</td></tr>';
+          document.getElementById("weekTotalSpan").innerHTML = "-- kWh total solar";
+        }
+      }
+      let weeklyTimer = null;
+
       function updateWeeklySummary() {
+        if (currentMode === "serial") {
+          updateLiveWeeklySummary();
+          if (!weeklyTimer) weeklyTimer = setInterval(() => currentMode === "serial" && updateLiveWeeklySummary(), 300000);
+          return;
+        }
         let weekData = getWeekData();
         let dailyMap = new Map();
         weekData.forEach((p) => {
@@ -1693,6 +1842,7 @@
         document.getElementById("serialErrorMsg").classList.add("hidden");
         if (!st.metrics) {
           setLiveStatus(false, `⏳ Bridge up, waiting for inverter on ${st.port}… ${st.error || ""}`);
+          setDiagramOffline(true);
           return;
         }
         const m = st.metrics;
@@ -1723,6 +1873,7 @@
         const err = document.getElementById("serialErrorMsg");
         err.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Start it with: <code>python inverter_server.py</code> then open http://localhost:8080';
         err.classList.remove("hidden");
+        setDiagramOffline(true);
       }
 
       // "updated Xs ago" ticker, so you can see it's live
@@ -1734,6 +1885,7 @@
         document.getElementById("statusLed").className = stale
           ? "w-2 h-2 rounded-full bg-amber-500"
           : "w-2 h-2 rounded-full bg-green-500 animate-pulse";
+        if (stale) setDiagramOffline(true);
       }
 
       function stopLive() {
@@ -1782,33 +1934,73 @@
           .join("");
       }
       let demoInterval;
+      // Demo = a small, physically consistent simulation that produces the same fields as the
+      // real server, so every card and the diagram behave exactly as they would live.
+      const demoState = { soc: 70, cloudUntil: 0, lineMode: false, lastT: Date.now() };
+      function demoTick() {
+        const now = Date.now();
+        const dtH = Math.min(10, (now - demoState.lastT) / 1000) / 3600; // hours since last tick
+        demoState.lastT = now;
+        const base = demoFullData[Math.floor(now / 30000) % demoFullData.length];
+        const isDay = base.pvPower > 300; // the demo profile keeps ~200 W of "night" noise
+
+        // Solar: day curve + wiggle; a passing cloud makes the MPPT drop out (voltage stays, current 0)
+        if (isDay && now > demoState.cloudUntil && Math.random() < 0.04) demoState.cloudUntil = now + 8000;
+        const cloud = now < demoState.cloudUntil;
+        const pvPower = isDay && !cloud ? Math.max(0, Math.round(base.pvPower + Math.sin(now / 5000) * 50)) : 0;
+        const pvVoltage = isDay ? +(61 + Math.sin(now / 7000) * 3).toFixed(1) : +(Math.random() * 3).toFixed(1);
+        const pvCurrent = pvVoltage > 0 ? +(pvPower / pvVoltage).toFixed(1) : 0;
+        const loadPower = Math.max(60, Math.round(base.loadPower + Math.sin(now / 4000) * 40));
+
+        // Mode: drop to Line (grid) when the battery gets low, back to inverter when recharged
+        if (demoState.soc <= 25) demoState.lineMode = true;
+        if (demoState.soc >= 45 && pvPower > loadPower) demoState.lineMode = false;
+        const workMode = demoState.lineMode ? "L" : "B";
+
+        let solarToLoad, batteryToLoad, gridToLoad, batteryPower;
+        if (workMode === "L") {
+          solarToLoad = 0; batteryToLoad = 0; gridToLoad = loadPower;
+          batteryPower = pvPower; // solar only charges the battery ("Only solar" priority)
+        } else {
+          solarToLoad = Math.min(loadPower, pvPower);
+          batteryToLoad = loadPower - solarToLoad;
+          gridToLoad = 0;
+          batteryPower = pvPower - loadPower; // + charging, - discharging
+        }
+        // Battery: 48 V, ~5 kWh bank for the simulation
+        demoState.soc = Math.min(100, Math.max(5, demoState.soc + (batteryPower * dtH * 60) / 5000 * 100)); // sped up 60x
+        if (demoState.soc >= 100 && batteryPower > 0) batteryPower = 0;
+        const batteryVoltage = +(47 + demoState.soc * 0.07 + (batteryPower > 0 ? 1 : 0)).toFixed(1);
+        const batteryCurrent = +(batteryPower / batteryVoltage).toFixed(1);
+        const charging = batteryCurrent > 0.2;
+        const chargeTxt = charging ? "BATTERY CHARGING" : batteryCurrent < -0.2 ? "BATTERY DISCHARGING" : "";
+
+        return {
+          timestamp: new Date(),
+          pvPower, pvVoltage, pvCurrent,
+          loadPower, loadPercent: Math.round((loadPower / 4000) * 100),
+          apparentPower: Math.round(loadPower * 1.1),
+          outputVoltage: +(230 + Math.sin(now / 9000) * 2).toFixed(1), outputFrequency: 50.0,
+          gridPresent: true, gridVoltage: +(234 + Math.sin(now / 11000) * 3).toFixed(1),
+          gridFrequency: 50.0, gridVoltageEstimated: false,
+          gridPower: gridToLoad, gridImport: gridToLoad, gridExport: 0,
+          batterySoc: Math.round(demoState.soc), batteryVoltage, batteryPower,
+          batteryDischargeCurrent: batteryCurrent,
+          solarToLoad, batteryToLoad, gridToLoad,
+          invTemp: Math.round(44 + loadPower / 200),
+          workMode, faultCode: 0, chargerPriority: "Only solar",
+          charging, sccCharging: pvPower > 5, acCharging: false,
+          invStatus:
+            workMode === "L"
+              ? "LINE MODE" + (chargeTxt ? ` · ${chargeTxt}` : "")
+              : "BATTERY MODE" + (pvPower > 5 ? " · SOLAR" : ""),
+        };
+      }
+
       function startDemoRealtime() {
         if (demoInterval) clearInterval(demoInterval);
         demoInterval = setInterval(() => {
-          let base =
-            demoFullData[Math.floor(Date.now() / 30000) % demoFullData.length];
-          let gridBypassSim = Math.random() > 0.7;
-          latestMetrics = {
-            ...base,
-            pvPower: Math.max(
-              0,
-              base.pvPower + Math.sin(Date.now() / 5000) * 50,
-            ),
-            loadPower: Math.max(
-              100,
-              base.loadPower + Math.sin(Date.now() / 4000) * 40,
-            ),
-            solarToLoad: Math.min(base.loadPower, base.pvPower),
-            batteryToLoad: gridBypassSim ? 10 : 20,
-            gridToLoad: gridBypassSim
-              ? base.loadPower - Math.min(base.loadPower, base.pvPower)
-              : 0,
-            batterySoc: 55 + Math.sin(Date.now() / 10000) * 20,
-            batteryDischargeCurrent: Math.abs(Math.sin(Date.now() / 8000)) * 2,
-            invTemp: 46 + Math.random() * 4,
-            efficiency: 93 + Math.random() * 3,
-            gridPower: gridBypassSim ? 150 : 0,
-          };
+          latestMetrics = demoTick();
           updateUIFromMetrics(latestMetrics);
           if (currentMode === "demo") renderChart();
         }, 1800);
@@ -1829,8 +2021,12 @@
           document.getElementById("serialPanel").classList.remove("hidden");
           document.getElementById("statusText").innerText = "Live (connecting)";
           if (demoInterval) clearInterval(demoInterval);
+          clearFigures();
+          serialHistory = [];
+          lastDataAt = 0;
           connectSerial();
           renderChart();
+          updateWeeklySummary();
         }
         document.getElementById("demoModeBtn").className =
           mode === "demo"

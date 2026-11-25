@@ -68,22 +68,8 @@
         max-height: 280px;
         width: 100%;
       }
-      .badge-live {
-        animation: pulse 1.5s infinite;
-      }
-      @keyframes pulse {
-        0% {
-          opacity: 0.6;
-          box-shadow: 0 0 0 0 #2ecc7150;
-        }
-        70% {
-          opacity: 1;
-          box-shadow: 0 0 0 5px #2ecc7100;
-        }
-        100% {
-          opacity: 0.6;
-        }
-      }
+      /* (the endless "pulse" LED animation was removed: it redrew the page continuously and
+         kept the GPU busy; the LED now flashes once per new reading, see flashLed()) */
       .tab-active {
         background: #2ecc71;
         color: #0a0c12;
@@ -1982,7 +1968,7 @@
         document.getElementById("serialStatusMsg").innerHTML = msg;
         document.getElementById("statusText").innerText = ok ? "Live" : "Live (no data)";
         document.getElementById("statusLed").className = ok
-          ? "w-2 h-2 rounded-full bg-green-500 animate-pulse"
+          ? "w-2 h-2 rounded-full bg-green-500"
           : "w-2 h-2 rounded-full bg-red-500";
       }
       let liveSource = null; // EventSource (server push)
@@ -2010,6 +1996,24 @@
         chartInstance.update("none");
       }
 
+      // One short flash of the status LED when a new reading arrives (instead of pulsing forever).
+      // Uses the Web Animations API so the once-a-second className update can't cut it off.
+      let lastFlashTs = 0;
+      function flashLed(ts) {
+        if (ts === lastFlashTs || document.hidden || currentTheme() === "eco") return;
+        lastFlashTs = ts;
+        const led = document.getElementById("statusLed");
+        if (led && led.animate) {
+          led.animate(
+            [
+              { transform: "scale(1.9)", boxShadow: "0 0 8px #2ecc71" },
+              { transform: "scale(1)", boxShadow: "0 0 0 transparent" },
+            ],
+            { duration: 600, easing: "ease-out" },
+          );
+        }
+      }
+
       function handleStatus(st) {
         document.getElementById("serialErrorMsg").classList.add("hidden");
         if (!st.metrics) {
@@ -2021,6 +2025,7 @@
         lastDataAt = new Date(m.timestamp).getTime();
         Object.assign(latestMetrics, m);
         if (!document.hidden) updateUIFromMetrics(latestMetrics); // hidden tab: collect only, draw on return
+        flashLed(m.timestamp); // only flashes when the reading is actually new
         setLiveStatus(
           !st.error,
           `<i class="fas fa-check-circle text-green-500"></i> ${st.port} · ${st.mode} · frames ok ${st.goodFrames} / bad ${st.badFrames}` +
@@ -2056,7 +2061,7 @@
         document.getElementById("statusText").innerText = stale ? `Stale · ${s}s ago` : `Live · ${s}s ago`;
         document.getElementById("statusLed").className = stale
           ? "w-2 h-2 rounded-full bg-amber-500"
-          : "w-2 h-2 rounded-full bg-green-500 animate-pulse";
+          : "w-2 h-2 rounded-full bg-green-500";
         if (stale) setDiagramOffline(true);
       }
 

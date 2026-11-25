@@ -286,7 +286,8 @@ def derive(d, pgs=None):
         "sccCharging": d["sccCharging"],
         "acCharging": ac_charging,
         "statusBits": d["statusBits"],
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        # include the UTC offset so browsers in another timezone don't see the reading as hours old
+        "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
 
 
@@ -506,7 +507,8 @@ def daily_energy(days=7):
         with open(path, newline="") as fh:
             for row in csv.DictReader(fh):
                 try:
-                    t = datetime.fromisoformat(row["timestamp"])
+                    # drop the offset: older rows have none, and naive/aware can't be subtracted
+                    t = datetime.fromisoformat(row["timestamp"]).replace(tzinfo=None)
                     load, pv = float(row["loadPower"]), float(row["pvPower"])
                     bp, gp = float(row["batteryPower"]), float(row.get("gridPower") or 0)
                 except (KeyError, ValueError, TypeError):

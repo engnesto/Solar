@@ -37,7 +37,7 @@
       }
       .glass-card {
         background: rgba(18, 25, 32, 0.85);
-        backdrop-filter: blur(12px);
+        /* no backdrop-filter: the page behind is flat, so blur only cost GPU time */
         border: 1px solid rgba(72, 187, 120, 0.2);
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
       }
@@ -142,7 +142,124 @@
       .text-xs {
         font-size: 1rem !important;
       }
+
+      /* ===================== THEMES =====================
+         html[data-theme] = dark (default look) | light | eco (reflective-LCD look)
+         The page is built from Tailwind colour classes, so themes override those. */
+
+      /* Theme switch */
+      .theme-btn { color: #9ca3af; }
+      .theme-btn[data-active="1"] { background: #059669; color: #fff; }
+
+      /* Diagram: per-theme rendering + "no live data" state (class set from JS) */
+      html[data-theme="dark"] #Layer_1.diagram-offline { filter: grayscale(1); }
+
+      /* ---------- LIGHT ---------- */
+      html[data-theme="light"] body,
+      html[data-theme="light"] .gradient-mesh { background: #eef1f4 !important; color: #1f2937; }
+      html[data-theme="light"] .glass-card,
+      html[data-theme="light"] .inverter-lcd {
+        background: #ffffff !important; border-color: #d8dee4 !important; box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+      }
+      html[data-theme="light"] .bg-black\/20, html[data-theme="light"] .bg-black\/30,
+      html[data-theme="light"] .bg-black\/40, html[data-theme="light"] .hover\:bg-black\/40:hover {
+        background: #f8fafc !important;
+      }
+      html[data-theme="light"] .bg-gray-800, html[data-theme="light"] .bg-gray-800\/50,
+      html[data-theme="light"] .bg-gray-800\/60, html[data-theme="light"] .bg-gray-800\/70,
+      html[data-theme="light"] .bg-gray-700 { background: #e5e7eb !important; }
+      html[data-theme="light"] .bg-emerald-900\/40, html[data-theme="light"] .bg-emerald-900\/50,
+      html[data-theme="light"] .bg-emerald-500\/20 { background: #d1fae5 !important; }
+      html[data-theme="light"] .bg-emerald-800\/40 { background: #a7f3d0 !important; }
+      html[data-theme="light"] [class*="border-gray-"], html[data-theme="light"] .border-emerald-800,
+      html[data-theme="light"] .border-emerald-800\/40, html[data-theme="light"] .border-emerald-900\/30,
+      html[data-theme="light"] .border-emerald-700\/40 { border-color: #d8dee4 !important; }
+      html[data-theme="light"] .text-gray-200, html[data-theme="light"] .text-gray-300,
+      html[data-theme="light"] .text-slate-300, html[data-theme="light"] .text-white { color: #1f2937 !important; }
+      html[data-theme="light"] .text-gray-400, html[data-theme="light"] .text-gray-500 { color: #6b7280 !important; }
+      html[data-theme="light"] [class*="text-amber-"] { color: #b45309 !important; }
+      html[data-theme="light"] [class*="text-blue-"] { color: #1d4ed8 !important; }
+      html[data-theme="light"] [class*="text-emerald-"], html[data-theme="light"] [class*="text-green-"],
+      html[data-theme="light"] [class*="text-lime-"] { color: #047857 !important; }
+      html[data-theme="light"] .bg-emerald-600, html[data-theme="light"] .bg-emerald-700 { color: #fff !important; }
+      html[data-theme="light"] .bg-clip-text { color: transparent !important; }
+      html[data-theme="light"] .ring-track { stroke: #e5e7eb; }
+      html[data-theme="light"] #Layer_1 { filter: invert(1) hue-rotate(180deg); } /* white lines -> dark */
+      html[data-theme="light"] #Layer_1.diagram-offline { filter: invert(1) hue-rotate(180deg) grayscale(1); }
+      html[data-theme="light"] .theme-btn { color: #4b5563; }
+      html[data-theme="light"] .theme-btn[data-active="1"] { color: #fff !important; }
+
+      /* ---------- ECO (reflective monochrome LCD) ---------- */
+      @font-face {
+        font-family: "DSEG7";
+        src: url("https://cdn.jsdelivr.net/npm/dseg@0.46.0/fonts/DSEG7-Classic/DSEG7Classic-Bold.woff2") format("woff2");
+        font-display: swap;
+      }
+      html[data-theme="eco"] {
+        --lcd: #b9c0a9;       /* LCD glass */
+        --lcd-hi: #c4cab5;    /* slightly lighter panel */
+        --ink: #1b2016;       /* active segment */
+        --ink-2: #3d4535;     /* secondary text */
+        --ghost: rgba(27, 32, 22, 0.13); /* unlit segment */
+      }
+      /* No motion, glow, shadows or blur: nothing for the GPU to redraw between readings */
+      html[data-theme="eco"] *, html[data-theme="eco"] *::before, html[data-theme="eco"] *::after {
+        animation: none !important; transition: none !important;
+        box-shadow: none !important; text-shadow: none !important; backdrop-filter: none !important;
+      }
+      html[data-theme="eco"] body, html[data-theme="eco"] .gradient-mesh { background: var(--lcd) !important; color: var(--ink); }
+      html[data-theme="eco"] .glass-card, html[data-theme="eco"] .inverter-lcd {
+        background: var(--lcd-hi) !important; background-image: none !important;
+        border: 2px solid var(--ink) !important;
+      }
+      html[data-theme="eco"] .bg-black\/20, html[data-theme="eco"] .bg-black\/30, html[data-theme="eco"] .bg-black\/40,
+      html[data-theme="eco"] .hover\:bg-black\/40:hover, html[data-theme="eco"] [class*="bg-gray-8"],
+      html[data-theme="eco"] [class*="bg-emerald-9"], html[data-theme="eco"] .bg-emerald-800\/40,
+      html[data-theme="eco"] .bg-emerald-500\/20 {
+        background: transparent !important;
+      }
+      html[data-theme="eco"] .bg-black\/30, html[data-theme="eco"] .bg-black\/20 { border-color: var(--ink) !important; }
+      html[data-theme="eco"] [class*="border-"] { border-color: var(--ink) !important; }
+      html[data-theme="eco"] [class*="text-"]:not([class*="text-red"]) { color: var(--ink) !important; }
+      html[data-theme="eco"] .text-gray-400, html[data-theme="eco"] .text-gray-500 { color: var(--ink-2) !important; }
+      html[data-theme="eco"] [class*="text-red"] { color: #6b0f0f !important; }
+      html[data-theme="eco"] .bg-clip-text { background: none !important; color: var(--ink) !important; }
+      /* Buttons / active chips: inverted segment (dark block, LCD-coloured text) */
+      html[data-theme="eco"] .bg-emerald-600, html[data-theme="eco"] .bg-emerald-700,
+      html[data-theme="eco"] .theme-btn[data-active="1"] {
+        background: var(--ink) !important; color: var(--lcd) !important;
+      }
+      html[data-theme="eco"] .bg-emerald-600 *, html[data-theme="eco"] .bg-emerald-700 * { color: var(--lcd) !important; }
+      /* (the :not(#_) bumps specificity above the generic text-colour rule) */
+      html[data-theme="eco"] .bg-emerald-600:not(#_), html[data-theme="eco"] .bg-emerald-700:not(#_) { color: var(--lcd) !important; }
+      html[data-theme="eco"] :has(> #batteryBar) { background: var(--ghost) !important; }
+      html[data-theme="eco"] .theme-btn { color: var(--ink) !important; }
+      /* LEDs, bars, rings */
+      html[data-theme="eco"] #statusLed, html[data-theme="eco"] .bg-gray-500 { background: var(--ink) !important; }
+      html[data-theme="eco"] #batteryBar { background: var(--ink) !important; }
+      html[data-theme="eco"] .ring-track { stroke: var(--ghost); }
+      html[data-theme="eco"] #solarRing, html[data-theme="eco"] #loadRing, html[data-theme="eco"] #socRing {
+        stroke: var(--ink) !important; stroke-linecap: butt;
+      }
+      /* Diagram: everything in segment-black; dimmed parts become faint "unlit segments" */
+      html[data-theme="eco"] #Layer_1 { filter: brightness(0); }
+      /* 7-segment digits for the main readings */
+      html[data-theme="eco"] .seg {
+        font-family: "DSEG7", "Inter", monospace !important; font-weight: 700; letter-spacing: 1px;
+      }
+      html[data-theme="eco"] .text-3xl.seg { font-size: 1.75rem; }
+      html[data-theme="eco"] .raw-monitor::-webkit-scrollbar-thumb { background: var(--ink); }
+      html[data-theme="eco"] .raw-monitor::-webkit-scrollbar-track { background: var(--ghost); }
     </style>
+    <script>
+      // Apply the saved theme before the page paints (no flash). ?theme=eco also works (e.g. kiosk).
+      (function () {
+        var q = new URLSearchParams(location.search).get("theme");
+        var t = q || localStorage.getItem("pg-theme") || "dark";
+        if (["dark", "light", "eco"].indexOf(t) < 0) t = "dark";
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
   </head>
   <body class="gradient-mesh text-gray-200 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -180,6 +297,20 @@
               class="mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-gray-300 hover:text-white flex items-center gap-2"
             >
               <i class="fas fa-satellite-dish"></i> Live
+            </button>
+          </div>
+          <div
+            class="flex items-center gap-1 bg-gray-800/70 rounded-xl p-1 border border-gray-700"
+            title="Theme"
+          >
+            <button data-theme-set="dark" class="theme-btn px-2.5 py-1.5 rounded-lg text-sm" title="Dark">
+              <i class="fas fa-moon"></i>
+            </button>
+            <button data-theme-set="light" class="theme-btn px-2.5 py-1.5 rounded-lg text-sm" title="Light">
+              <i class="fas fa-sun"></i>
+            </button>
+            <button data-theme-set="eco" class="theme-btn px-2.5 py-1.5 rounded-lg text-sm" title="Eco (LCD, no animations)">
+              <i class="fas fa-leaf"></i>
             </button>
           </div>
           <div
@@ -1057,7 +1188,7 @@
             <div class="flex justify-between items-end mt-1">
               <div>
                 <div class="mt-1">
-                  <span id="solarPowerVal" class="text-3xl font-bold text-amber-300"
+                  <span id="solarPowerVal" class="seg text-3xl font-bold text-amber-300"
                     >--</span
                   ><span class="text-sm text-amber-300"> W</span>
                 </div>
@@ -1068,7 +1199,7 @@
               </div>
               <div class="relative w-16 h-16 shrink-0" title="Share of 3000 W rated solar input">
                 <svg viewBox="0 0 64 64" class="w-full h-full" style="transform: rotate(-90deg)">
-                  <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(245,158,11,0.18)" stroke-width="6" />
+                  <circle class="ring-track" cx="32" cy="32" r="27" fill="none" stroke="rgba(245,158,11,0.18)" stroke-width="6" />
                   <circle id="solarRing" cx="32" cy="32" r="27" fill="none" stroke="#fbbf24" stroke-width="6"
                     stroke-linecap="round" stroke-dasharray="169.65" stroke-dashoffset="169.65"
                     style="transition: stroke-dashoffset 0.6s, stroke 0.6s" />
@@ -1090,7 +1221,7 @@
             <div class="flex justify-between items-end mt-1">
               <div>
                 <div class="mt-1">
-                  <span id="loadPowerVal" class="text-3xl font-bold text-blue-200"
+                  <span id="loadPowerVal" class="seg text-3xl font-bold text-blue-200"
                     >--</span
                   ><span class="text-sm text-blue-300"> W</span>
                 </div>
@@ -1105,7 +1236,7 @@
               </div>
               <div class="relative w-16 h-16 shrink-0" title="Inverter load (% of rated output)">
                 <svg viewBox="0 0 64 64" class="w-full h-full" style="transform: rotate(-90deg)">
-                  <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(96,165,250,0.18)" stroke-width="6" />
+                  <circle class="ring-track" cx="32" cy="32" r="27" fill="none" stroke="rgba(96,165,250,0.18)" stroke-width="6" />
                   <circle id="loadRing" cx="32" cy="32" r="27" fill="none" stroke="#60a5fa" stroke-width="6"
                     stroke-linecap="round" stroke-dasharray="169.65" stroke-dashoffset="169.65"
                     style="transition: stroke-dashoffset 0.6s, stroke 0.6s" />
@@ -1129,7 +1260,7 @@
               >
             </div>
             <div>
-              <span id="gridPowerVal" class="text-2xl font-mono font-bold"
+              <span id="gridPowerVal" class="seg text-2xl font-mono font-bold"
                 >--</span
               ><span class="text-xs"> W</span>
             </div>
@@ -1163,7 +1294,7 @@
               <div>
                 <span
                   id="batterySocVal"
-                  class="text-3xl font-bold text-emerald-300"
+                  class="seg text-3xl font-bold text-emerald-300"
                   >--</span
                 ><span class="text-sm">%</span>
                 <div class="text-xs">
@@ -1176,7 +1307,7 @@
               </div>
               <div class="relative w-16 h-16 shrink-0" title="Battery state of charge">
                 <svg viewBox="0 0 64 64" class="w-full h-full" style="transform: rotate(-90deg)">
-                  <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(16,185,129,0.18)" stroke-width="6" />
+                  <circle class="ring-track" cx="32" cy="32" r="27" fill="none" stroke="rgba(16,185,129,0.18)" stroke-width="6" />
                   <circle id="socRing" cx="32" cy="32" r="27" fill="none" stroke="#34d399" stroke-width="6"
                     stroke-linecap="round" stroke-dasharray="169.65" stroke-dashoffset="169.65"
                     style="transition: stroke-dashoffset 0.6s, stroke 0.6s" />
@@ -1569,8 +1700,8 @@
       function setDiagramOffline(off) {
         const svg = document.getElementById("Layer_1");
         if (!svg) return;
-        svg.style.transition = "filter 0.6s, opacity 0.6s";
-        svg.style.filter = off ? "grayscale(1)" : "";
+        // the grey/colour treatment per theme lives in CSS (#Layer_1.diagram-offline)
+        svg.classList.toggle("diagram-offline", off);
         svg.style.opacity = off ? 0.35 : 1;
         if (off) {
           FLOW_IDS.forEach((id) => svgShow(id, false, DIM_FLOW));
@@ -1625,6 +1756,28 @@
             ? "Panels have voltage but no current – e.g. MPPT re-tracking after a cloud, or nothing to charge"
             : "";
         }
+      }
+
+      // ---------- Themes ----------
+      function currentTheme() {
+        return document.documentElement.getAttribute("data-theme") || "dark";
+      }
+      function chartTheme() {
+        const t = currentTheme();
+        if (t === "light") return { text: "#374151", muted: "#6b7280", grid: "#e5e7eb", mono: false };
+        if (t === "eco") return { text: "#1b2016", muted: "#3d4535", grid: "rgba(27,32,22,0.15)", ink: "#1b2016", mono: true };
+        return { text: "#ccc", muted: "#aaa", grid: "#2a3a44", mono: false };
+      }
+      const THEME_BAR_COLOR = { dark: "#0b1418", light: "#eef1f4", eco: "#b9c0a9" };
+      function setTheme(t) {
+        document.documentElement.setAttribute("data-theme", t);
+        try { localStorage.setItem("pg-theme", t); } catch (e) {}
+        document.querySelectorAll("[data-theme-set]").forEach((b) => {
+          b.dataset.active = b.dataset.themeSet === t ? "1" : "0";
+        });
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", THEME_BAR_COLOR[t] || THEME_BAR_COLOR.dark);
+        if (typeof renderChart === "function" && chartInstance) renderChart();
       }
 
       function renderChart() {
@@ -1713,6 +1866,18 @@
             },
           ];
         }
+        const th = chartTheme();
+        if (th.mono) {
+          // LCD look: all series in segment-black, told apart by dash pattern, no fills
+          const dashes = [[], [6, 4], [2, 3]];
+          datasets.forEach((d, i) => {
+            d.borderColor = th.ink;
+            d.backgroundColor = "transparent";
+            d.fill = false;
+            d.borderDash = dashes[i % dashes.length];
+            d.pointRadius = 0;
+          });
+        }
         if (chartInstance) chartInstance.destroy();
         const ctx = document
           .getElementById("powerChartCanvas")
@@ -1723,16 +1888,18 @@
           options: {
             responsive: true,
             maintainAspectRatio: true,
+            animation: false, // no redraw animation: less GPU/CPU work on every update
             plugins: {
-              legend: { position: "top", labels: { color: "#ccc" } },
+              legend: { position: "top", labels: { color: th.text } },
               tooltip: { mode: "index" },
             },
             scales: {
               y: {
-                grid: { color: "#2a3a44" },
-                title: { display: true, text: "Watts (W)", color: "#aaa" },
+                grid: { color: th.grid },
+                ticks: { color: th.muted },
+                title: { display: true, text: "Watts (W)", color: th.muted },
               },
-              x: { ticks: { maxRotation: 45, autoSkip: true, color: "#aaa" } },
+              x: { grid: { color: th.grid }, ticks: { maxRotation: 45, autoSkip: true, color: th.muted } },
             },
           },
         });
@@ -1824,6 +1991,7 @@
 
       // Add one point to the existing chart without rebuilding it (no flicker)
       function appendPointToChart(p) {
+        if (document.hidden) return; // redrawn in full when the tab becomes visible
         if (currentMode !== "serial" || !chartInstance) return renderChart();
         const ds = chartInstance.data.datasets;
         const vals =
@@ -1852,7 +2020,7 @@
         const m = st.metrics;
         lastDataAt = new Date(m.timestamp).getTime();
         Object.assign(latestMetrics, m);
-        updateUIFromMetrics(latestMetrics);
+        if (!document.hidden) updateUIFromMetrics(latestMetrics); // hidden tab: collect only, draw on return
         setLiveStatus(
           !st.error,
           `<i class="fas fa-check-circle text-green-500"></i> ${st.port} · ${st.mode} · frames ok ${st.goodFrames} / bad ${st.badFrames}` +
@@ -1882,7 +2050,7 @@
 
       // "updated Xs ago" ticker, so you can see it's live
       function tickAge() {
-        if (currentMode !== "serial" || !lastDataAt) return;
+        if (document.hidden || currentMode !== "serial" || !lastDataAt) return;
         const s = Math.max(0, Math.round((Date.now() - lastDataAt) / 1000));
         const stale = s > 20;
         document.getElementById("statusText").innerText = stale ? `Stale · ${s}s ago` : `Live · ${s}s ago`;
@@ -2004,9 +2172,9 @@
       function startDemoRealtime() {
         if (demoInterval) clearInterval(demoInterval);
         demoInterval = setInterval(() => {
+          if (document.hidden) return; // nothing to draw for a hidden tab
           latestMetrics = demoTick();
-          updateUIFromMetrics(latestMetrics);
-          if (currentMode === "demo") renderChart();
+          updateUIFromMetrics(latestMetrics); // the demo chart is static: no need to rebuild it each tick
         }, 1800);
       }
       function setMode(mode) {
@@ -2096,7 +2264,23 @@
           renderChart();
         };
       });
-      setMode("serial");
+
+      // Theme switch
+      document.querySelectorAll("[data-theme-set]").forEach((b) => {
+        b.onclick = () => setTheme(b.dataset.themeSet);
+      });
+      setTheme(currentTheme());
+
+      // Hidden tab = no drawing at all; catch up in one go when it becomes visible again
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) return;
+        if (currentMode === "demo" || lastDataAt) updateUIFromMetrics(latestMetrics);
+        renderChart();
+        tickAge();
+      });
+
+      // ?mode=demo opens straight into Demo (handy for previews / kiosk)
+      setMode(new URLSearchParams(location.search).get("mode") === "demo" ? "demo" : "serial");
       updateWeeklySummary();
       renderChart();
     </script>

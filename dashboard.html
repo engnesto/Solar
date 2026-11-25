@@ -250,6 +250,11 @@
       html[data-theme^="eco"] .text-3xl.seg { font-size: 1.75rem; }
       html[data-theme^="eco"] .raw-monitor::-webkit-scrollbar-thumb { background: var(--ink); }
       html[data-theme^="eco"] .raw-monitor::-webkit-scrollbar-track { background: var(--ghost); }
+
+      /* Phones: the connection/diagnostics panel is clutter; the header badge still shows Live/Stale */
+      @media (max-width: 639px) {
+        #serialPanel { display: none !important; }
+      }
     </style>
     <script>
       // Apply the saved theme before the page paints (no flash). ?theme=eco also works (e.g. kiosk).
@@ -282,19 +287,19 @@
             </p>
           </div>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
           <div
             class="flex items-center gap-1 bg-gray-800/70 rounded-xl p-1 border border-gray-700"
           >
             <button
               id="demoModeBtn"
-              class="mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 bg-emerald-600 text-white shadow"
+              class="mode-switch px-3 sm:px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 bg-emerald-600 text-white shadow"
             >
               <i class="fas fa-chart-line"></i> Demo
             </button>
             <button
               id="serialModeBtn"
-              class="mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-gray-300 hover:text-white flex items-center gap-2"
+              class="mode-switch px-3 sm:px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-gray-300 hover:text-white flex items-center gap-2"
             >
               <i class="fas fa-satellite-dish"></i> Live
             </button>
@@ -325,7 +330,7 @@
               id="statusLed"
               class="w-2 h-2 rounded-full bg-gray-500"
             ></span>
-            <span id="statusText" class="text-xs font-mono text-gray-300"
+            <span id="statusText" class="text-xs font-mono text-gray-300 whitespace-nowrap"
               >Demo Mode</span
             >
           </div>
@@ -355,7 +360,7 @@
           >
             <i class="fas fa-terminal"></i> Raw Monitor
           </button>
-          <div id="serialStatusMsg" class="text-xs text-gray-400 font-mono">
+          <div id="serialStatusMsg" class="text-xs text-gray-400 font-mono min-w-0 break-all">
             ⚡ Waiting for bridge…
           </div>
         </div>

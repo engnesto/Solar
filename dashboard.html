@@ -844,6 +844,8 @@
                     y2="135.8"
                   />
                   <path class="st33" d="M503.4,88.3v-13.9l12,7-12,7h0Z" />
+                  <!-- up arrow: energy leaving the battery -->
+                  <path class="st33" d="M431.5,112.5h14l-7-12.1-7,12.1h0Z" />
                 </g>
                 <g id="from_charger_to_inverter">
                   <g>
@@ -1602,7 +1604,9 @@
         svgShow("Charger", chargerActive, DIM_ICON);
         svgShow("charger_to_battery", charging && chargerActive, DIM_FLOW);
         svgShow("from_charger_to_inverter", inverterRunning && pvProducing, DIM_FLOW); // solar straight to load
-        svgShow("battery_to_inverter", inverterRunning && (discharging || !pvProducing), DIM_FLOW);
+        // Like the inverter LCD: the battery sits on the inverter's DC bus, so this path shows
+        // whenever the inverter is running (even if solar is covering most of the load)
+        svgShow("battery_to_inverter", inverterRunning, DIM_FLOW);
         svgShow("Inverter", inverterRunning, DIM_ICON);
         svgShow("inverter_to_load", inverterRunning, DIM_FLOW);
         svgShow("battery", true, DIM_ICON);

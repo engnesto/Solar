@@ -262,6 +262,14 @@
       /* legend: a short sample of each line (solid / dashed / dotted), wraps on small screens */
       .lg-item { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
 
+      /* Secondary button (Raw Monitor): readable text in every theme, including hover */
+      .btn-secondary { background: #374151; color: #f3f4f6; border: 1px solid transparent; }
+      .btn-secondary:hover { background: #4b5563; }
+      html[data-theme="light"] .btn-secondary { background: #e5e7eb; color: #1f2937; }
+      html[data-theme="light"] .btn-secondary:hover { background: #d1d5db; }
+      html[data-theme^="eco"] .btn-secondary { background: transparent; color: var(--ink) !important; border: 2px solid var(--ink); }
+      html[data-theme^="eco"] .btn-secondary:hover { background: var(--ink); color: var(--lcd) !important; }
+
       #statusLed { flex-shrink: 0; } /* JS rewrites its classes; keep the dot round when the text truncates */
 
       /* Phones: the connection/diagnostics panel is clutter; the header badge still shows Live/Stale */
@@ -372,7 +380,7 @@
           </button>
           <button
             id="serialRawMonitorBtn"
-            class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition hidden md:flex items-center gap-1"
+            class="btn-secondary px-3 py-1.5 rounded-lg text-xs transition hidden md:flex items-center gap-1"
           >
             <i class="fas fa-terminal"></i> Raw Monitor
           </button>
@@ -2135,12 +2143,16 @@
         Object.assign(latestMetrics, m);
         if (!document.hidden) updateUIFromMetrics(latestMetrics); // hidden tab: collect only, draw on return
         flashLed(m.timestamp); // only flashes when the reading is actually new
+        // Short status on the button row; the full details stay in the hover tooltip
         setLiveStatus(
           !st.error,
-          `<i class="fas fa-check-circle text-green-500"></i> ${st.port} · ${st.mode} · frames ok ${st.goodFrames} / bad ${st.badFrames}` +
-            (m.gridVoltageEstimated ? " · grid V ≈ output V" : "") +
-            (st.error ? ` · <span class="text-red-400">${st.error}</span>` : ""),
+          st.error
+            ? `<i class="fas fa-exclamation-circle text-red-400"></i> <span class="text-red-400">${st.error}</span>`
+            : `<i class="fas fa-check-circle text-green-500"></i> Serial connected`,
         );
+        document.getElementById("serialStatusMsg").title =
+          `${st.port} · ${st.mode} · frames ok ${st.goodFrames} / bad ${st.badFrames}` +
+          (m.gridVoltageEstimated ? " · grid V ≈ output V" : "");
         const last = serialHistory[serialHistory.length - 1];
         if (!last || lastDataAt - last.timestamp >= 30000) {
           const p = toHistoryPoint(m);

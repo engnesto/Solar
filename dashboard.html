@@ -1427,8 +1427,13 @@
           </button>
         </div>
         <div id="chartLegend" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-300"></div>
-        <div class="relative h-60 sm:h-72">
-          <canvas id="powerChartCanvas" aria-label="Power trend chart"></canvas>
+        <div class="relative">
+          <!-- Today view needs room for 24 hourly labels: on narrow screens it scrolls sideways -->
+          <div id="chartScroll" class="overflow-x-auto">
+            <div id="chartBox" class="relative h-60 sm:h-72">
+              <canvas id="powerChartCanvas" aria-label="Power trend chart"></canvas>
+            </div>
+          </div>
           <div id="chartEmpty" class="hidden absolute inset-0 flex items-center justify-center text-sm text-gray-500">
             waiting for data…
           </div>
@@ -1797,6 +1802,8 @@
         const d = new Date(2000, 0, 1, Math.floor(h), Math.round((h % 1) * 60));
         return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
       };
+      // Axis label for a whole hour: "12 AM", "1 AM" … "11 PM" (or "00"…"23" in 24 h locales)
+      const hourTick = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
 
       function todayPoints() {
         if (currentMode !== "serial") return getTodayData();
@@ -1967,8 +1974,8 @@
               grid: { color: th.grid, drawTicks: false },
               border: { display: false },
               ticks: {
-                stepSize: 6, color: th.muted, padding: 6, maxRotation: 0,
-                callback: (v) => ({ 6: "6 AM", 12: "12 PM", 18: "6 PM" })[v] ?? "",
+                stepSize: 1, autoSkip: false, color: th.muted, padding: 6, maxRotation: 0, font: { size: 10 },
+                callback: (v) => (Number.isInteger(v) && v < 24 ? hourTick(v) : ""),
               },
             }
           : {
@@ -2011,9 +2018,26 @@
         renderLegend(series);
         if (chartInstance) chartInstance.destroy();
         chartInstance = null;
+        // 24 hourly labels need ~40 px each; narrower screens get a sideways-scrolling chart
+        document.getElementById("chartBox").style.minWidth = today ? TODAY_CHART_MIN_W + "px" : "";
         if (empty) return;
         const ctx = document.getElementById("powerChartCanvas").getContext("2d");
         chartInstance = new Chart(ctx, config);
+        if (today && scrollToNowPending) {
+          scrollToNowPending = false;
+          scrollChartToNow();
+        }
+      }
+
+      const TODAY_CHART_MIN_W = 960;
+      let scrollToNowPending = true; // on load and when switching back to Today
+      // On a scrolling (phone) chart, bring the current time into view
+      function scrollChartToNow() {
+        const sc = document.getElementById("chartScroll");
+        if (!chartInstance || sc.scrollWidth <= sc.clientWidth) return;
+        const now = new Date();
+        const x = chartInstance.scales.x.getPixelForValue(now.getHours() + now.getMinutes() / 60);
+        sc.scrollLeft = Math.max(0, x - sc.clientWidth * 0.75);
       }
 
       // Live mode: real per-day kWh totals computed by the server from its CSV logs
@@ -2356,6 +2380,7 @@
       };
       document.getElementById("trendTodayBtn").onclick = () => {
         currentTimeRange = "today";
+        scrollToNowPending = true;
         document.getElementById("trendTodayBtn").className =
           "trend-range px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-700 text-white";
         document.getElementById("trendWeekBtn").className =

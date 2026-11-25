@@ -64,7 +64,7 @@
         background: rgba(0, 0, 0, 0.6);
         border-left: 3px solid #2ecc71;
       }
-      canvas {
+      canvas:not(#powerChartCanvas) {
         max-height: 280px;
         width: 100%;
       }
@@ -250,6 +250,28 @@
       html[data-theme^="eco"] .text-3xl.seg { font-size: 1.75rem; }
       html[data-theme^="eco"] .raw-monitor::-webkit-scrollbar-thumb { background: var(--ink); }
       html[data-theme^="eco"] .raw-monitor::-webkit-scrollbar-track { background: var(--ghost); }
+
+      /* Power Trends: round source buttons + flow rows (colour comes from --c per button) */
+      .src-btn { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+      .src-dot {
+        width: 3.25rem; height: 3.25rem; border-radius: 9999px; display: grid; place-items: center;
+        font-size: 1.15rem; color: var(--c); border: 2px solid color-mix(in srgb, var(--c) 55%, transparent);
+        background: color-mix(in srgb, var(--c) 10%, transparent); transition: background .15s, color .15s;
+      }
+      .src-btn[aria-pressed="true"] .src-dot { background: var(--c); color: #fff; border-color: var(--c); }
+      .src-lbl { font-size: 0.7rem; color: #9ca3af; }
+      .src-btn[aria-pressed="true"] .src-lbl { color: inherit; font-weight: 600; }
+      .chart-pol { position: absolute; font-size: 0.65rem; letter-spacing: .02em; }
+      .flow-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem;
+        border-radius: 0.6rem; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(0, 0, 0, 0.18); }
+      .flow-swatch { width: 0.65rem; height: 0.65rem; border-radius: 9999px; flex-shrink: 0; }
+      .flow-bar { height: 3px; border-radius: 2px; margin-top: 3px; }
+      html[data-theme="light"] .flow-row { background: #f8fafc; border-color: #e5e7eb; }
+      html[data-theme="light"] .src-lbl { color: #6b7280; }
+      html[data-theme^="eco"] .src-dot { color: var(--ink); border-color: var(--ink); background: transparent; }
+      html[data-theme^="eco"] .src-btn[aria-pressed="true"] .src-dot { background: var(--ink); color: var(--lcd); }
+      html[data-theme^="eco"] .src-lbl { color: var(--ink); }
+      html[data-theme^="eco"] .flow-row { background: transparent; border-color: var(--ink); }
 
       #statusLed { flex-shrink: 0; } /* JS rewrites its classes; keep the dot round when the text truncates */
 
@@ -1374,9 +1396,9 @@
         </div>
       </div>
 
-      <!-- POWER TRENDS SECTION -->
-      <div class="glass-card rounded-xl p-5 space-y-5">
-        <div class="flex flex-wrap justify-between items-center">
+      <!-- POWER TRENDS: pick one source; full-day time axis (Today) or kWh per day (7 Days); energy flow below -->
+      <div class="glass-card rounded-xl p-5 space-y-4" id="trendsCard">
+        <div class="flex flex-wrap justify-between items-center gap-2">
           <div class="flex items-center gap-2">
             <i class="fas fa-chart-line text-emerald-400 text-xl"></i>
             <h2 class="text-lg font-semibold">Power Trends</h2>
@@ -1396,50 +1418,54 @@
             </button>
           </div>
         </div>
-        <div class="flex gap-2 border-b border-gray-700 pb-2">
-          <button
-            data-tab="prod"
-            class="chart-tab active-tab px-4 py-1.5 text-sm rounded-t-lg bg-emerald-800/40 text-emerald-200"
-          >
-            <i class="fas fa-solar-panel mr-1"></i>Solar & Load
+
+        <div class="grid grid-cols-4 gap-2 max-w-md mx-auto" role="group" aria-label="Energy source">
+          <button data-src="home" class="src-btn" style="--c: #3d8fd1" aria-pressed="true">
+            <span class="src-dot"><i class="fas fa-home"></i></span><span class="src-lbl">Home</span>
           </button>
-          <button
-            data-tab="source"
-            class="chart-tab px-4 py-1.5 text-sm rounded-t-lg text-gray-400"
-          >
-            <i class="fas fa-chart-pie mr-1"></i>Load by Source
+          <button data-src="solar" class="src-btn" style="--c: #c4880e" aria-pressed="false">
+            <span class="src-dot"><i class="fas fa-solar-panel"></i></span><span class="src-lbl">Solar</span>
           </button>
-          <button
-            data-tab="battery"
-            class="chart-tab px-4 py-1.5 text-sm rounded-t-lg text-gray-400"
-          >
-            <i class="fas fa-car-battery mr-1"></i>Battery & Grid
+          <button data-src="battery" class="src-btn" style="--c: #169c74" aria-pressed="false">
+            <span class="src-dot"><i class="fas fa-car-battery"></i></span><span class="src-lbl">Battery</span>
+          </button>
+          <button data-src="grid" class="src-btn" style="--c: #9d78de" aria-pressed="false">
+            <span class="src-dot"><i class="fas fa-bolt"></i></span><span class="src-lbl">Grid</span>
           </button>
         </div>
-        <div class="w-full h-80 relative">
-          <canvas
-            id="powerChartCanvas"
-            width="800"
-            height="350"
-            style="max-height: 320px; width: 100%"
-          ></canvas>
+
+        <div class="flex items-end justify-between gap-3 flex-wrap">
+          <div>
+            <div id="trendPeriod" class="text-xs text-gray-400">Today</div>
+            <div class="flex items-baseline gap-1.5">
+              <span id="trendHeadVal" class="text-3xl font-semibold font-mono">--</span>
+              <span class="text-sm text-gray-400">kWh</span>
+            </div>
+            <div id="trendHeadLbl" class="text-xs text-gray-400">--</div>
+          </div>
+          <div id="trendHead2" class="text-right hidden">
+            <div class="flex items-baseline gap-1.5 justify-end">
+              <span id="trendHead2Val" class="text-xl font-semibold font-mono">--</span>
+              <span class="text-xs text-gray-400">kWh</span>
+            </div>
+            <div id="trendHead2Lbl" class="text-xs text-gray-400">--</div>
+          </div>
         </div>
-        <div
-          class="flex justify-between text-xs text-gray-400 border-t border-gray-700 pt-3 mt-2"
-        >
-          <div>
-            <span class="text-amber-300">● From Solar:</span>
-            <span id="infoSolarVal" class="font-mono">--</span> W
+
+        <div class="relative h-60 sm:h-72">
+          <canvas id="powerChartCanvas" aria-label="Power trend chart"></canvas>
+          <div id="chartPolarity" class="hidden pointer-events-none">
+            <span class="chart-pol top-1 left-1 text-gray-400"><i class="fas fa-arrow-up"></i> charging</span>
+            <span class="chart-pol bottom-7 left-1 text-gray-400"><i class="fas fa-arrow-down"></i> discharging</span>
           </div>
-          <div>
-            <span class="text-emerald-300">● From Battery:</span>
-            <span id="infoBattVal" class="font-mono">--</span> W
+          <div id="chartEmpty" class="hidden absolute inset-0 flex items-center justify-center text-sm text-gray-500">
+            waiting for data…
           </div>
-          <div>
-            <span class="text-blue-300">● From Grid:</span>
-            <span id="infoGridVal" class="font-mono">--</span> W
-          </div>
-          <div id="infoTimeLabel" class="text-gray-500">latest: --</div>
+        </div>
+
+        <div class="border-t border-gray-700 pt-3">
+          <div id="flowTitle" class="text-xs uppercase tracking-wider text-gray-400 mb-2">Energy flow</div>
+          <div id="flowRows" class="space-y-2"></div>
         </div>
       </div>
 
@@ -1484,7 +1510,6 @@
       let serialPort = null;
       let isSerialConnected = false;
       let chartInstance = null;
-      let currentChartTab = "prod";
       let currentTimeRange = "today";
       let serialReadInterval = null;
       let rawLogEntries = [];
@@ -1529,20 +1554,15 @@
             (hour > 5 && hour < 19 ? 1 : 0.2);
           let loadVal =
             400 + Math.sin(hour * 0.5) * 120 + (hour > 18 ? 250 : 0);
+          // + charging from surplus solar, - discharging (less at night: battery reserve)
           let battPower =
             solarVal > loadVal
-              ? (solarVal - loadVal) * 0.4
-              : (loadVal - solarVal) * 0.3;
-          let gridPowerVal =
-            loadVal > solarVal && battPower < 80
-              ? Math.max(0, loadVal - solarVal - battPower)
-              : 0;
+              ? (solarVal - loadVal) * 0.6
+              : -(loadVal - solarVal) * (hour >= 6 && hour < 22 ? 0.85 : 0.5);
           let solarToL = Math.min(loadVal, solarVal);
-          let battToL =
-            loadVal - solarToL > 0
-              ? Math.min(loadVal - solarToL, battPower)
-              : 0;
+          let battToL = Math.min(loadVal - solarToL, Math.max(0, -battPower));
           let gridToL = loadVal - solarToL - battToL;
+          let gridPowerVal = gridToL;
           let timeLabel = `${Math.floor(hour)}:${(hour % 1) * 60 === 0 ? "00" : "30"}`;
           data.push({
             time: timeLabel,
@@ -1583,8 +1603,7 @@
           "solarPowerVal", "solarVoltageVal", "solarCurrentVal", "loadPowerVal", "loadVoltageVal",
           "loadFreqVal", "apparentPower", "gridPowerVal", "gridVoltageVal", "gridFreqVal", "gridImport",
           "gridExport", "batterySocVal", "batteryVoltageVal", "batteryCurrentVal", "batteryTemp",
-          "solarToLoadSpan", "battToLoadSpan", "gridToLoadSpan", "infoSolarVal", "infoBattVal",
-          "infoGridVal", "liveTimestamp",
+          "solarToLoadSpan", "battToLoadSpan", "gridToLoadSpan", "liveTimestamp",
         ].forEach((id) => {
           const el = document.getElementById(id);
           if (el) el.innerText = "--";
@@ -1600,7 +1619,6 @@
         const bar = document.getElementById("batteryBar");
         if (bar) bar.style.width = "0%";
         document.getElementById("chargeFlowText").innerText = "waiting for data…";
-        document.getElementById("infoTimeLabel").innerText = "latest: --";
         document.getElementById("batteryStateBadge").innerHTML = '<i class="fas fa-hourglass-half mr-1"></i>WAITING';
         document.getElementById("invStatusBadge").innerHTML = '<i class="fas fa-circle text-[6px] text-gray-400"></i> WAITING';
         setDiagramOffline(true);
@@ -1674,11 +1692,6 @@
         set("battToLoadSpan", Math.round(m.batteryToLoad));
         set("gridToLoadSpan", Math.round(m.gridToLoad));
         set("liveTimestamp", new Date().toLocaleTimeString());
-        set("infoSolarVal", Math.round(m.solarToLoad));
-        set("infoBattVal", Math.round(m.batteryToLoad));
-        set("infoGridVal", Math.round(m.gridToLoad));
-        document.getElementById("infoTimeLabel").innerHTML =
-          `latest: ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
         updateFlowDiagram(m);
         const badge = document.getElementById("invStatusBadge");
         if (badge) {
@@ -1778,10 +1791,10 @@
       }
       function chartTheme() {
         const t = currentTheme();
-        if (t === "light") return { text: "#374151", muted: "#6b7280", grid: "#e5e7eb", mono: false };
-        if (t === "eco") return { text: "#1b2016", muted: "#3d4535", grid: "rgba(27,32,22,0.15)", ink: "#1b2016", mono: true };
-        if (t === "eco-dark") return { text: "#f0a93a", muted: "#b07c2c", grid: "rgba(240,169,58,0.12)", ink: "#f0a93a", mono: true };
-        return { text: "#ccc", muted: "#aaa", grid: "#2a3a44", mono: false };
+        if (t === "light") return { text: "#374151", muted: "#6b7280", grid: "#eef0f3", surface: "#ffffff", mono: false };
+        if (t === "eco") return { text: "#1b2016", muted: "#3d4535", grid: "rgba(27,32,22,0.15)", ink: "#1b2016", surface: "#c4cab5", mono: true };
+        if (t === "eco-dark") return { text: "#f0a93a", muted: "#b07c2c", grid: "rgba(240,169,58,0.12)", ink: "#f0a93a", surface: "#101209", mono: true };
+        return { text: "#ccc", muted: "#8b95a1", grid: "rgba(148,163,184,0.12)", surface: "#0f1b21", mono: false };
       }
       const THEME_BAR_COLOR = { dark: "#0b1418", light: "#eef1f4", eco: "#b9c0a9", "eco-dark": "#0a0b08" };
       function setTheme(t) {
@@ -1795,129 +1808,289 @@
         if (typeof renderChart === "function" && chartInstance) renderChart();
       }
 
-      function renderChart() {
-        // Live mode only ever shows real readings (empty chart until data arrives)
-        let dataPoints =
-          currentMode === "serial"
-            ? serialHistory
-            : currentTimeRange === "today"
-              ? getTodayData()
-              : getWeekData();
-        if (!dataPoints.length) {
-          if (chartInstance) chartInstance.destroy();
-          chartInstance = null;
-          return;
+      // ---------- Power Trends ----------
+      // Colours: validated as a set (dataviz validator, dark + light) – amber/teal/violet stay apart
+      // under colour-blindness; every colour also appears with its name + value in the flow list.
+      const SRC = {
+        home: { c: "#3d8fd1", label: "Home", icon: "fa-home" },
+        solar: { c: "#c4880e", label: "Solar", icon: "fa-solar-panel" },
+        battery: { c: "#169c74", label: "Battery", icon: "fa-car-battery" },
+        grid: { c: "#9d78de", label: "Grid", icon: "fa-bolt" },
+      };
+      let currentSource = "home";
+      let liveDays = null; // per-day kWh from /api/days (Live mode)
+
+      const hexA = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, "0");
+      const fmtW = (w) => (Math.abs(w) >= 1000 ? `${(w / 1000).toFixed(1)} kW` : `${Math.round(w)} W`);
+      const fmtKwh = (k) => (k >= 10 ? k.toFixed(1) : k.toFixed(2));
+      const hourOf = (p) => {
+        const t = p.timestamp instanceof Date ? p.timestamp : new Date(p.timestamp);
+        return t.getHours() + t.getMinutes() / 60 + t.getSeconds() / 3600;
+      };
+      const hourLabel = (h) => {
+        const d = new Date(2000, 0, 1, Math.floor(h), Math.round((h % 1) * 60));
+        return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      };
+
+      function todayPoints() {
+        if (currentMode !== "serial") return getTodayData();
+        const today = new Date().toDateString();
+        return serialHistory.filter((p) => p.timestamp instanceof Date && p.timestamp.toDateString() === today);
+      }
+
+      // Integrate W over time -> kWh. Gaps (server was off) are capped so they don't count as energy.
+      function integrate(points) {
+        const t = { solar: 0, load: 0, s2l: 0, b2l: 0, g2l: 0, charge: 0, discharge: 0, grid: 0 };
+        if (!points.length) return t;
+        const hs = points.map(hourOf);
+        const gaps = hs.slice(1).map((x, i) => x - hs[i]).filter((g) => g > 0).sort((x, y) => x - y);
+        const typical = gaps.length ? gaps[gaps.length >> 1] : 0.5 / 60;
+        const cap = Math.max(2 / 60, typical * 1.5);
+        points.forEach((p, i) => {
+          const dt = i === 0 ? typical : Math.min(cap, Math.max(0, hs[i] - hs[i - 1]));
+          const k = dt / 1000; // W·h -> kWh
+          t.solar += (p.pvPower || 0) * k;
+          t.load += (p.loadPower || 0) * k;
+          t.s2l += (p.solarToLoad || 0) * k;
+          t.b2l += (p.batteryToLoad || 0) * k;
+          t.g2l += (p.gridToLoad || 0) * k;
+          const bp = p.batteryPower || 0; // + charging, - discharging
+          if (bp > 0) t.charge += bp * k;
+          else t.discharge += -bp * k;
+          t.grid += Math.max(0, p.gridPower || 0) * k;
+        });
+        return t;
+      }
+
+      function weekDays() {
+        if (currentMode === "serial") {
+          return (liveDays || []).map((d) => ({ ...d, label: d.day.split(" ").slice(0, 2).join(" ") }));
         }
-        let labels = dataPoints.map(
-          (p) =>
-            p.time ||
-            p.timestamp?.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }) ||
-            "",
-        );
-        let datasets = [];
-        if (currentChartTab === "prod") {
-          datasets = [
-            {
-              label: "Solar Power (W)",
-              data: dataPoints.map((p) => p.pvPower),
-              borderColor: "#e8b624",
-              backgroundColor: "#e8b62420",
-              borderWidth: 2,
-              tension: 0.3,
-              fill: true,
-            },
-            {
-              label: "Load Power (W)",
-              data: dataPoints.map((p) => p.loadPower),
-              borderColor: "#3b9ddd",
-              backgroundColor: "#3b9ddd20",
-              borderWidth: 2,
-              tension: 0.3,
-            },
-          ];
-        } else if (currentChartTab === "source") {
-          datasets = [
-            {
-              label: "From Solar (W)",
-              data: dataPoints.map((p) => p.solarToLoad),
-              borderColor: "#e8b624",
-              backgroundColor: "#f0b42930",
-              borderWidth: 2,
-              fill: true,
-            },
-            {
-              label: "From Battery (W)",
-              data: dataPoints.map((p) => p.batteryToLoad),
-              borderColor: "#2ecc71",
-              backgroundColor: "#2ecc7130",
-              borderWidth: 2,
-              fill: true,
-            },
-            {
-              label: "From Grid (W)",
-              data: dataPoints.map((p) => p.gridToLoad),
-              borderColor: "#8b8fa3",
-              backgroundColor: "#8b8fa330",
-              borderWidth: 2,
-              fill: true,
-            },
-          ];
-        } else {
-          datasets = [
-            {
-              label: "Battery Power (W)",
-              data: dataPoints.map((p) => p.batteryPower || 0),
-              borderColor: "#2ecc71",
-              borderWidth: 2,
-            },
-            {
-              label: "Grid Power (W)",
-              data: dataPoints.map((p) => p.gridPower || 0),
-              borderColor: "#8b8fa3",
-              borderWidth: 2,
-            },
-          ];
-        }
+        const base = integrate(getTodayData()); // demo: the demo day, varied per day
+        const f = [0.92, 1.05, 0.78, 1.1, 0.97, 0.64, 1.0];
+        return f.map((k, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - 6 + i);
+          return {
+            label: d.toLocaleDateString([], { weekday: "short", day: "numeric" }),
+            solar: base.solar * k, load: base.load * (0.9 + 0.1 * k),
+            solarToLoad: base.s2l * k, battToLoad: base.b2l, gridToLoad: base.g2l * (2 - k),
+          };
+        });
+      }
+
+      function trendTotals() {
+        if (currentTimeRange === "today") return { ...integrate(todayPoints()), hasCharge: true };
+        const t = { solar: 0, load: 0, s2l: 0, b2l: 0, g2l: 0, hasCharge: false };
+        weekDays().forEach((d) => {
+          t.solar += d.solar; t.load += d.load;
+          t.s2l += d.solarToLoad; t.b2l += d.battToLoad; t.g2l += d.gridToLoad;
+        });
+        t.discharge = t.b2l; // per-day logs only know battery->home
+        t.grid = t.g2l;
+        return t;
+      }
+
+      // Headline numbers + the "energy flow" list (doubles as the legend: swatch + name + value)
+      function renderTrendSummary() {
+        const t = trendTotals();
+        const s = currentSource;
         const th = chartTheme();
+        const sw = (key, i) => (th.mono ? hexA(th.ink, [1, 0.55, 0.25][i] ?? 1) : SRC[key].c);
+        const put = (id, v) => (document.getElementById(id).innerText = v);
+        put("trendPeriod", currentTimeRange === "today" ? "Today" : "Last 7 days");
+        const second = document.getElementById("trendHead2");
+        second.classList.add("hidden");
+        let title, rows;
+        if (s === "home") {
+          put("trendHeadVal", fmtKwh(t.load)); put("trendHeadLbl", "Home used");
+          title = "Powered by";
+          rows = [["solar", "Solar", t.s2l], ["battery", "Battery", t.b2l], ["grid", "Grid", t.g2l]];
+        } else if (s === "solar") {
+          put("trendHeadVal", fmtKwh(t.solar)); put("trendHeadLbl", "Solar generated");
+          title = "Solar went to";
+          rows = [["home", "Home", t.s2l], ["battery", "Battery", Math.max(0, t.solar - t.s2l)]];
+        } else if (s === "battery") {
+          put("trendHeadVal", fmtKwh(t.discharge)); put("trendHeadLbl", "Battery discharged");
+          if (t.hasCharge) {
+            second.classList.remove("hidden");
+            put("trendHead2Val", fmtKwh(t.charge)); put("trendHead2Lbl", "Charged");
+          }
+          title = "Battery powered";
+          rows = [["home", "Home", t.b2l]];
+        } else {
+          put("trendHeadVal", fmtKwh(t.grid)); put("trendHeadLbl", "Grid imported");
+          title = "Grid powered";
+          rows = [["home", "Home", t.g2l]];
+        }
+        const total = rows.reduce((a, r) => a + r[2], 0);
+        document.getElementById("flowTitle").innerText = title;
+        document.getElementById("flowRows").innerHTML = rows
+          .map(([key, name, kwh], i) => {
+            const pct = total > 0 ? Math.round((kwh / total) * 100) : 0;
+            const col = sw(key, i);
+            return `<div class="flow-row">
+              <span class="flow-swatch" style="background:${col}"></span>
+              <i class="fas ${SRC[key].icon} text-gray-400 w-4 text-center"></i>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-2"><span class="font-semibold">${pct}%</span><span class="text-sm text-gray-300">${name}</span>
+                <span class="ml-auto font-mono text-sm">${fmtKwh(kwh)} kWh</span></div>
+                <div class="flow-bar" style="width:${pct}%;background:${col}"></div>
+              </div></div>`;
+          })
+          .join("");
+      }
+
+      // Vertical crosshair at the hovered time (line/area charts)
+      const crosshair = {
+        id: "crosshair",
+        afterDraw(chart) {
+          const a = chart.tooltip?.getActiveElements?.();
+          if (!a || !a.length || chart.config.type !== "line") return;
+          const x = a[0].element.x, { top, bottom } = chart.chartArea, ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = chartTheme().muted;
+          ctx.globalAlpha = 0.6;
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+          ctx.restore();
+        },
+      };
+
+      // Soft vertical gradient under an area line
+      const areaFill = (hex, top = 0.45, bottom = 0.03) => (ctx) => {
+        const { chart } = ctx, area = chart.chartArea;
+        if (!area) return hexA(hex, top / 2);
+        const g = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+        g.addColorStop(0, hexA(hex, top));
+        g.addColorStop(1, hexA(hex, bottom));
+        return g;
+      };
+
+      function buildTrendConfig() {
+        const th = chartTheme();
+        const s = currentSource;
+        const today = currentTimeRange === "today";
+        const yAxis = {
+          position: "right",
+          beginAtZero: true,
+          grid: { color: th.grid, drawTicks: false },
+          border: { display: false },
+          ticks: { color: th.muted, maxTicksLimit: 5, padding: 6, callback: (v) => (today ? fmtW(v) : `${v} kWh`) },
+        };
+        let type, data, xAxis;
+
+        if (today) {
+          const pts = todayPoints();
+          const xy = (f) => pts.map((p) => ({ x: hourOf(p), y: f(p) }));
+          const line = (key, label, f, extra = {}) => ({
+            label, data: xy(f), borderColor: SRC[key].c, backgroundColor: areaFill(SRC[key].c),
+            borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.35, fill: "origin", ...extra,
+          });
+          let ds;
+          if (s === "home") {
+            // stacked by source: the top edge is the total home load
+            ds = [
+              line("solar", "Solar → Home", (p) => p.solarToLoad || 0, { backgroundColor: hexA(SRC.solar.c, 0.55), borderWidth: 1.5 }),
+              line("battery", "Battery → Home", (p) => p.batteryToLoad || 0, { backgroundColor: hexA(SRC.battery.c, 0.55), borderWidth: 1.5, fill: "-1" }),
+              line("grid", "Grid → Home", (p) => p.gridToLoad || 0, { backgroundColor: hexA(SRC.grid.c, 0.55), borderWidth: 1.5, fill: "-1" }),
+            ];
+            yAxis.stacked = true;
+          } else if (s === "solar") {
+            ds = [line("solar", "Solar", (p) => p.pvPower || 0)];
+          } else if (s === "battery") {
+            ds = [line("battery", "Battery", (p) => p.batteryPower || 0, {
+              fill: { target: "origin", above: hexA(SRC.battery.c, 0.4), below: hexA(SRC.battery.c, 0.18) },
+            })];
+            yAxis.beginAtZero = false;
+            yAxis.grid.color = (c) => (c.tick?.value === 0 ? th.muted : th.grid);
+          } else {
+            ds = [line("grid", "Grid", (p) => Math.max(0, p.gridPower || 0))];
+          }
+          type = "line";
+          data = { datasets: ds };
+          xAxis = {
+            type: "linear", min: 0, max: 24,
+            grid: { color: th.grid, drawTicks: false },
+            border: { display: false },
+            ticks: {
+              stepSize: 6, color: th.muted, padding: 6, maxRotation: 0,
+              callback: (v) => ({ 6: "6 AM", 12: "12 PM", 18: "6 PM" })[v] ?? "",
+            },
+          };
+        } else {
+          const days = weekDays();
+          const bar = (key, label, f, extra = {}) => ({
+            label, data: days.map(f), backgroundColor: SRC[key].c,
+            borderRadius: 4, maxBarThickness: 30, ...extra,
+          });
+          let ds;
+          if (s === "home") {
+            const gap = { borderColor: th.surface, borderWidth: { top: 2 }, borderSkipped: "bottom", borderRadius: 0 };
+            ds = [
+              bar("solar", "Solar → Home", (d) => d.solarToLoad, gap),
+              bar("battery", "Battery → Home", (d) => d.battToLoad, gap),
+              bar("grid", "Grid → Home", (d) => d.gridToLoad, { ...gap, borderRadius: { topLeft: 4, topRight: 4 } }),
+            ];
+            yAxis.stacked = true;
+          } else if (s === "solar") ds = [bar("solar", "Solar", (d) => d.solar)];
+          else if (s === "battery") ds = [bar("battery", "Battery → Home", (d) => d.battToLoad)];
+          else ds = [bar("grid", "Grid → Home", (d) => d.gridToLoad)];
+          type = "bar";
+          data = { labels: days.map((d) => d.label), datasets: ds };
+          xAxis = {
+            stacked: s === "home",
+            grid: { display: false },
+            border: { display: false },
+            ticks: { color: th.muted, maxRotation: 0, autoSkip: false, font: { size: 10 } },
+          };
+        }
+
         if (th.mono) {
-          // LCD look: all series in segment-black, told apart by dash pattern, no fills
-          const dashes = [[], [6, 4], [2, 3]];
-          datasets.forEach((d, i) => {
-            d.borderColor = th.ink;
-            d.backgroundColor = "transparent";
-            d.fill = false;
-            d.borderDash = dashes[i % dashes.length];
-            d.pointRadius = 0;
+          // LCD look: segment ink only; series told apart by dash pattern (lines) or ink density (bars)
+          const dashes = [[], [6, 4], [2, 3]], dens = [1, 0.55, 0.25];
+          data.datasets.forEach((d, i) => {
+            d.borderColor = type === "bar" ? th.surface : th.ink;
+            if (type === "bar") d.backgroundColor = hexA(th.ink, dens[i % 3]);
+            else { d.backgroundColor = "transparent"; d.fill = false; d.borderDash = dashes[i % 3]; }
           });
         }
-        if (chartInstance) chartInstance.destroy();
-        const ctx = document
-          .getElementById("powerChartCanvas")
-          .getContext("2d");
-        chartInstance = new Chart(ctx, {
-          type: "line",
-          data: { labels, datasets },
+
+        return {
+          type,
+          data,
+          plugins: [crosshair],
           options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             animation: false, // no redraw animation: less GPU/CPU work on every update
+            interaction: { mode: "index", intersect: false },
+            layout: { padding: { top: 6 } },
             plugins: {
-              legend: { position: "top", labels: { color: th.text } },
-              tooltip: { mode: "index" },
-            },
-            scales: {
-              y: {
-                grid: { color: th.grid },
-                ticks: { color: th.muted },
-                title: { display: true, text: "Watts (W)", color: th.muted },
+              legend: { display: false }, // the flow list below is the legend
+              tooltip: {
+                callbacks: {
+                  title: (items) => (today ? hourLabel(items[0].parsed.x) : items[0].label),
+                  label: (it) => ` ${it.dataset.label}: ${today ? fmtW(it.parsed.y) : `${fmtKwh(it.parsed.y)} kWh`}`,
+                },
               },
-              x: { grid: { color: th.grid }, ticks: { maxRotation: 45, autoSkip: true, color: th.muted } },
             },
+            scales: { x: xAxis, y: yAxis },
           },
-        });
+        };
+      }
+
+      function renderChart() {
+        const today = currentTimeRange === "today";
+        const empty = today ? !todayPoints().length : !weekDays().length;
+        document.getElementById("chartEmpty").classList.toggle("hidden", !empty);
+        document.getElementById("chartPolarity").classList.toggle("hidden", !(today && currentSource === "battery") || empty);
+        renderTrendSummary();
+        if (chartInstance) chartInstance.destroy();
+        chartInstance = null;
+        if (empty) return;
+        const ctx = document.getElementById("powerChartCanvas").getContext("2d");
+        chartInstance = new Chart(ctx, buildTrendConfig());
       }
       // Live mode: real per-day kWh totals computed by the server from its CSV logs
       async function updateLiveWeeklySummary() {
@@ -1929,6 +2102,8 @@
             document.getElementById("weekTotalSpan").innerHTML = "-- kWh total solar";
             return;
           }
+          liveDays = days;
+          if (currentTimeRange === "week") renderChart();
           let total = 0;
           tbody.innerHTML = days
             .map((d) => {
@@ -2004,25 +2179,15 @@
       let lastDataAt = 0; // ms timestamp of the last reading received
       let ageTimer = null;
 
-      // Add one point to the existing chart without rebuilding it (no flicker)
+      // New 30-second sample: refresh today's chart data in place (no rebuild, no flicker)
       function appendPointToChart(p) {
         if (document.hidden) return; // redrawn in full when the tab becomes visible
-        if (currentMode !== "serial" || !chartInstance) return renderChart();
-        const ds = chartInstance.data.datasets;
-        const vals =
-          currentChartTab === "prod"
-            ? [p.pvPower, p.loadPower]
-            : currentChartTab === "source"
-              ? [p.solarToLoad, p.batteryToLoad, p.gridToLoad]
-              : [p.batteryPower || 0, p.gridPower || 0];
-        if (ds.length !== vals.length) return renderChart();
-        chartInstance.data.labels.push(p.time);
-        vals.forEach((v, i) => ds[i].data.push(v));
-        if (chartInstance.data.labels.length > 2880) {
-          chartInstance.data.labels.shift();
-          ds.forEach((d) => d.data.shift());
-        }
+        if (currentTimeRange !== "today") return;
+        if (!chartInstance) return renderChart();
+        const fresh = buildTrendConfig();
+        chartInstance.data.datasets.forEach((d, i) => (d.data = fresh.data.datasets[i].data));
         chartInstance.update("none");
+        renderTrendSummary();
       }
 
       // One short flash of the status LED when a new reading arrives (instead of pulsing forever).
@@ -2278,23 +2443,10 @@
           "trend-range px-3 py-1.5 rounded-md text-xs font-medium text-gray-300";
         renderChart();
       };
-      document.querySelectorAll(".chart-tab").forEach((btn) => {
+      document.querySelectorAll(".src-btn").forEach((btn) => {
         btn.onclick = () => {
-          document
-            .querySelectorAll(".chart-tab")
-            .forEach((b) =>
-              b.classList.remove(
-                "active-tab",
-                "bg-emerald-800/40",
-                "text-emerald-200",
-              ),
-            );
-          btn.classList.add(
-            "active-tab",
-            "bg-emerald-800/40",
-            "text-emerald-200",
-          );
-          currentChartTab = btn.dataset.tab;
+          currentSource = btn.dataset.src;
+          document.querySelectorAll(".src-btn").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
           renderChart();
         };
       });

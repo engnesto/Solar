@@ -1967,6 +1967,39 @@
         return g;
       };
 
+      // Chart-only smoothing: raw 30 s readings are spiky (and the RS485 decode drops to 0 now and then),
+      // so the line shows 5-minute averages. kWh totals still integrate the raw readings.
+      // A run of empty buckets (server off) becomes a null, so the line breaks instead of bridging it.
+      // Bucket size follows the chart width (~3 px per bucket): 5 min on desktop, 15 min on a phone.
+      function bucketMinutes() {
+        const w = document.getElementById("powerChartCanvas")?.parentElement?.clientWidth || 600;
+        const ideal = 1440 / Math.max(60, (w - 60) / 3);
+        return [5, 10, 15, 30].find((m) => m >= ideal) || 30;
+      }
+      function bucketize(points, f, BUCKET_MIN = bucketMinutes()) {
+        const sums = new Map();
+        points.forEach((p) => {
+          const k = Math.floor((hourOf(p) * 60) / BUCKET_MIN);
+          const b = sums.get(k) || { n: 0, s: 0 };
+          b.n++;
+          b.s += f(p);
+          sums.set(k, b);
+        });
+        const keys = [...sums.keys()].sort((a, b) => a - b);
+        // what counts as a gap depends on the sample spacing (live: 30 s, demo: 30 min)
+        const hs = points.map(hourOf);
+        const steps = hs.slice(1).map((x, i) => (x - hs[i]) * 60).filter((d) => d > 0).sort((a, b) => a - b);
+        const typicalMin = steps.length ? steps[steps.length >> 1] : 1;
+        const gapBuckets = Math.max(3, Math.ceil((typicalMin * 2) / BUCKET_MIN));
+        const out = [];
+        keys.forEach((k, i) => {
+          if (i && k - keys[i - 1] > gapBuckets) out.push({ x: ((keys[i - 1] + k + 1) / 2) * (BUCKET_MIN / 60), y: null });
+          const b = sums.get(k);
+          out.push({ x: ((k + 0.5) * BUCKET_MIN) / 60, y: b.s / b.n });
+        });
+        return out;
+      }
+
       function buildTrendConfig() {
         const th = chartTheme();
         const s = currentSource;
@@ -1982,18 +2015,23 @@
 
         if (today) {
           const pts = todayPoints();
-          const xy = (f) => pts.map((p) => ({ x: hourOf(p), y: f(p) }));
+          const bm = bucketMinutes();
+          const xy = (f) => bucketize(pts, f, bm);
           const line = (key, label, f, extra = {}) => ({
             label, data: xy(f), borderColor: SRC[key].c, backgroundColor: areaFill(SRC[key].c),
-            borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.35, fill: "origin", ...extra,
+            borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, pointHitRadius: 6,
+            cubicInterpolationMode: "monotone", spanGaps: false, fill: "origin", ...extra,
           });
           let ds;
           if (s === "home") {
-            // stacked by source: the top edge is the total home load
+            // stacked by source (no outlines, so a zero layer stays invisible);
+            // one "Home" line on its own stack traces the total load on top
+            const layer = { borderWidth: 0, pointHoverRadius: 0, stack: "src" };
             ds = [
-              line("solar", "Solar → Home", (p) => p.solarToLoad || 0, { backgroundColor: hexA(SRC.solar.c, 0.55), borderWidth: 1.5 }),
-              line("battery", "Battery → Home", (p) => p.batteryToLoad || 0, { backgroundColor: hexA(SRC.battery.c, 0.55), borderWidth: 1.5, fill: "-1" }),
-              line("grid", "Grid → Home", (p) => p.gridToLoad || 0, { backgroundColor: hexA(SRC.grid.c, 0.55), borderWidth: 1.5, fill: "-1" }),
+              line("home", "Home total", (p) => p.loadPower || 0, { fill: false, stack: "total", borderWidth: 2 }),
+              line("solar", "Solar → Home", (p) => p.solarToLoad || 0, { ...layer, backgroundColor: hexA(SRC.solar.c, 0.6) }),
+              line("battery", "Battery → Home", (p) => p.batteryToLoad || 0, { ...layer, backgroundColor: hexA(SRC.battery.c, 0.6), fill: "-1" }),
+              line("grid", "Grid → Home", (p) => p.gridToLoad || 0, { ...layer, backgroundColor: hexA(SRC.grid.c, 0.6), fill: "-1" }),
             ];
             yAxis.stacked = true;
           } else if (s === "solar") {
@@ -2052,7 +2090,8 @@
           data.datasets.forEach((d, i) => {
             d.borderColor = type === "bar" ? th.surface : th.ink;
             if (type === "bar") d.backgroundColor = hexA(th.ink, dens[i % 3]);
-            else { d.backgroundColor = "transparent"; d.fill = false; d.borderDash = dashes[i % 3]; }
+            else if (d.stack === "src") d.hidden = true; // stacked layers can't be told apart in one ink: show the total only
+            else { d.backgroundColor = hexA(th.ink, 0.12); d.fill = "origin"; d.borderDash = dashes[i % 3]; d.borderWidth = 2; }
           });
         }
 

@@ -250,7 +250,11 @@ def derive(d, pgs=None):
     return {
         "pvPower": pv_w,
         "pvVoltage": d["pvVoltage"],
-        "pvCurrent": d["pvCurrent"],
+        # Inverter reports PV current in whole amps; derive a 0.1 A value from PV watts / PV volts
+        "pvCurrent": (round(d["pvPowerReported"] / d["pvVoltage"], 1)
+                      if d["pvPowerReported"] is not None and d["pvVoltage"] and d["pvVoltage"] > 5
+                      else d["pvCurrent"]),
+        "pvCurrentRaw": d["pvCurrent"],
         "loadPower": load,
         "loadPercent": d["loadPercent"],
         "outputVoltage": d["outputVoltage"],

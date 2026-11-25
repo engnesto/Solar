@@ -251,6 +251,8 @@
       html[data-theme^="eco"] .raw-monitor::-webkit-scrollbar-thumb { background: var(--ink); }
       html[data-theme^="eco"] .raw-monitor::-webkit-scrollbar-track { background: var(--ghost); }
 
+      #statusLed { flex-shrink: 0; } /* JS rewrites its classes; keep the dot round when the text truncates */
+
       /* Phones: the connection/diagnostics panel is clutter; the header badge still shows Live/Stale */
       @media (max-width: 639px) {
         #serialPanel { display: none !important; }
@@ -304,35 +306,38 @@
               <i class="fas fa-satellite-dish"></i> Live
             </button>
           </div>
+          <!-- theme + status stay on one row, even on phones -->
+          <div class="flex items-center gap-2 sm:gap-3 min-w-0">
           <div
-            class="flex items-center gap-1 bg-gray-800/70 rounded-xl p-1 border border-gray-700"
+            class="flex items-center gap-1 bg-gray-800/70 rounded-xl p-1 border border-gray-700 shrink-0"
             title="Theme"
           >
-            <button data-theme-set="dark" class="theme-btn px-2.5 py-1.5 rounded-lg text-sm" title="Dark">
+            <button data-theme-set="dark" class="theme-btn px-2 sm:px-2.5 py-1.5 rounded-lg text-sm" title="Dark">
               <i class="fas fa-moon"></i>
             </button>
-            <button data-theme-set="light" class="theme-btn px-2.5 py-1.5 rounded-lg text-sm" title="Light">
+            <button data-theme-set="light" class="theme-btn px-2 sm:px-2.5 py-1.5 rounded-lg text-sm" title="Light">
               <i class="fas fa-sun"></i>
             </button>
-            <button data-theme-set="eco" class="theme-btn px-2.5 py-1.5 rounded-lg text-sm" title="Eco (LCD, no animations)">
+            <button data-theme-set="eco" class="theme-btn px-2 sm:px-2.5 py-1.5 rounded-lg text-sm" title="Eco (LCD, no animations)">
               <i class="fas fa-leaf"></i>
             </button>
-            <button data-theme-set="eco-dark" class="theme-btn px-2.5 py-1.5 rounded-lg text-sm relative" title="Eco Dark (negative LCD – best on OLED)">
+            <button data-theme-set="eco-dark" class="theme-btn px-2 sm:px-2.5 py-1.5 rounded-lg text-sm relative" title="Eco Dark (negative LCD – best on OLED)">
               <i class="fas fa-leaf"></i
               ><i class="fas fa-moon absolute" style="font-size: 0.5em; right: 4px; top: 4px"></i>
             </button>
           </div>
           <div
             id="connectionStatusBadge"
-            class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-emerald-700/40"
+            class="flex items-center gap-2 bg-black/40 px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-700/40 min-w-0"
           >
             <span
               id="statusLed"
-              class="w-2 h-2 rounded-full bg-gray-500"
+              class="w-2 h-2 rounded-full bg-gray-500 shrink-0"
             ></span>
-            <span id="statusText" class="text-xs font-mono text-gray-300 whitespace-nowrap"
+            <span id="statusText" class="text-xs font-mono text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis"
               >Demo Mode</span
             >
+          </div>
           </div>
         </div>
       </div>

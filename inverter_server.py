@@ -115,10 +115,20 @@ def parse_qpigs(text: str):
         "pvPowerReported": int(g[19]) if g[19] else None,
         "statusBits2": g[20],
     }
+    # Status b7..b0 (string index 0 = b7)
+    d["sbuPriorityVersion"] = status[0] == "1"
+    d["configChanged"] = status[1] == "1"
+    d["sccFirmwareUpdated"] = status[2] == "1"
     d["loadOn"] = status[3] == "1"
+    d["batteryVoltageSteady"] = status[4] == "1"  # charger holding a steady (CV) voltage
     d["charging"] = status[5] == "1"
     d["sccCharging"] = status[6] == "1"
     d["acCharging"] = status[7] == "1"
+    # Second status field b10 b9 b8 (newer firmware only)
+    s2 = g[20]
+    d["floatCharging"] = s2[0] == "1" if s2 else None
+    d["switchOn"] = s2[1] == "1" if s2 else None
+    d["dustproofInstalled"] = s2[2] == "1" if s2 else None
     return d
 
 
@@ -152,6 +162,9 @@ FAULT_CODES = {
     58: "Output voltage too low",
 }
 CHARGER_PRIORITY = {"0": "Utility first", "1": "Solar first", "2": "Solar + Utility", "3": "Only solar"}
+OUTPUT_MODES = {"0": "Single unit", "1": "Parallel", "2": "3-phase: phase 1", "3": "3-phase: phase 2",
+                "4": "3-phase: phase 3"}
+BATTERY_STATUS = {"00": "Normal", "01": "Under voltage", "10": "Open (not connected)"}
 
 
 def parse_qpgs(text: str):
@@ -167,16 +180,80 @@ def parse_qpgs(text: str):
         "gridFrequency": float(g[3]),
         "outputVoltage": float(g[4]),
         "chargerPriority": CHARGER_PRIORITY.get(g[19], g[19]),
+        "outputMode": OUTPUT_MODES.get(g[18], g[18]),
+        "totalChargeCurrent": int(g[13]),
+        "maxChargeCurrent": int(g[20]),
+        "maxAcChargeCurrent": int(g[22]),
+        # Status b7..b0: SCC ok, AC charging, SCC charging, battery (2 bits), line loss, load on, config changed
         "pgsStatusBits": st,
         "sccOk": st[0] == "1",
         "acCharging": st[1] == "1",
         "sccCharging": st[2] == "1",
+        "batteryStatus": BATTERY_STATUS.get(st[3:5], st[3:5]),
         "lineLoss": st[5] == "1",
         "loadOn": st[6] == "1",
+        "configChanged": st[7] == "1",
     }
     if not (0 <= d["gridVoltage"] <= 280 and 0 <= d["gridFrequency"] <= 70):
         return None
     return d
+
+
+# QPIWS warning-status bits a0..a31. kind: "fault" (inverter stops), "warning" (keeps running,
+# blinking warning icon on the LCD), "info" (normal condition worth noting). code = number on the LCD.
+# Bits marked * are faults when a1 (inverter fault) is also set, otherwise warnings.
+QPIWS_DEFS = {
+    1: ("inverterFault", "Inverter fault", "fault", None),
+    2: ("busOver", "Bus voltage too high", "fault", "08"),
+    3: ("busUnder", "Bus voltage too low", "fault", "52"),
+    4: ("busSoftFail", "Bus soft start failed", "fault", "09"),
+    5: ("lineFail", "Grid lost / out of range", "info", None),
+    6: ("opvShort", "Output short circuit", "warning", None),
+    7: ("invVoltLow", "Inverter output voltage too low", "fault", "58"),
+    8: ("invVoltHigh", "Inverter output voltage too high", "fault", "06"),
+    9: ("overTemp", "Over temperature", "warning*", "02"),
+    10: ("fanLocked", "Fan locked", "warning*", "01"),
+    11: ("battHigh", "Battery voltage too high", "warning*", "03"),
+    12: ("battLow", "Low battery", "warning", "04"),
+    13: ("overcharge", "Battery overcharge", "warning", None),
+    14: ("battUnderShutdown", "Battery under-voltage shutdown", "warning", None),
+    15: ("battDerating", "Battery derating", "warning", None),
+    16: ("overload", "Overload", "warning*", "07"),
+    17: ("eepromFault", "EEPROM fault", "warning", None),
+    18: ("invOverCurrent", "Inverter over current", "fault", "51"),
+    19: ("invSoftFail", "Inverter soft start failed", "fault", "53"),
+    20: ("selfTestFail", "Self test failed", "fault", None),
+    21: ("opDcOver", "DC voltage on AC output", "fault", "55"),
+    22: ("battOpen", "Battery not connected", "fault", "56"),
+    23: ("currentSensorFail", "Current sensor failed", "fault", "57"),
+    24: ("battShort", "Battery short circuit", "fault", None),
+    25: ("powerLimit", "Output power derating", "warning", "10"),
+    26: ("pvHigh", "PV voltage too high", "warning", None),
+    27: ("mpptOverloadFault", "MPPT overload fault", "warning", None),
+    28: ("mpptOverload", "MPPT overload", "warning", None),
+    29: ("battTooLowToCharge", "Battery too low to charge", "warning", None),
+}
+QPIWS_LEN = 32  # bits in the reply; updated automatically from any clean reply
+
+
+def parse_qpiws(text: str, length: int):
+    """Return (bits, first_known_index, length) or None.
+
+    Clean reply: "(" + bits. With the RS485 decode the first ~6 characters are lost, so
+    the surviving run of 0/1 is the *tail* of the bit string and is aligned from the end;
+    the lost leading bits come back as None (unknown)."""
+    m = re.search(r"\(([01]{32,40})", text)
+    if m:
+        bits = m.group(1)
+        return [int(c) for c in bits], 0, len(bits)
+    runs = re.findall(r"[01]{20,}", text)
+    if not runs:
+        return None
+    run = max(runs, key=len)
+    if len(run) >= length:  # only the "(" was lost
+        return [int(c) for c in run[:length]], 0, length
+    start = length - len(run)
+    return [None] * start + [int(c) for c in run], start, length
 
 
 def sanity_ok(d) -> bool:
@@ -290,6 +367,24 @@ def derive(d, pgs=None):
         "sccCharging": d["sccCharging"],
         "acCharging": ac_charging,
         "statusBits": d["statusBits"],
+        # extra QPIGS details
+        "sccBatteryVoltage": d["sccBatteryVoltage"],
+        "fanOffset": d["fanOffset"],  # battery-voltage offset for fan-on, in 10 mV units
+        "eepromVersion": d["eepromVersion"],
+        "floatCharging": d["floatCharging"],
+        "batteryVoltageSteady": d["batteryVoltageSteady"],
+        "switchOn": d["switchOn"],
+        "dustproofInstalled": d["dustproofInstalled"],
+        "sbuPriorityVersion": d["sbuPriorityVersion"],
+        "sccFirmwareUpdated": d["sccFirmwareUpdated"],
+        "configChanged": d["configChanged"] or bool(pgs and pgs["configChanged"]),
+        # extra QPGS0 details (None when QPGS0 isn't available)
+        "outputMode": pgs["outputMode"] if pgs else None,
+        "maxChargeCurrent": pgs["maxChargeCurrent"] if pgs else None,
+        "maxAcChargeCurrent": pgs["maxAcChargeCurrent"] if pgs else None,
+        "totalChargeCurrent": pgs["totalChargeCurrent"] if pgs else None,
+        "batteryStatus": pgs["batteryStatus"] if pgs else None,
+        "sccOk": pgs["sccOk"] if pgs else None,
         # include the UTC offset so browsers in another timezone don't see the reading as hours old
         "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
@@ -314,8 +409,18 @@ class Inverter:
         self.history = deque(maxlen=2880)  # 24 h at 30 s
         self._last_hist = 0
         self.raw_log = deque(maxlen=30)
+        # Warnings (QPIWS) + event log
+        self.cycle = 0
+        self.qpiws_len = QPIWS_LEN
+        self.ws_prev = None      # previous parsed bit list (for debouncing)
+        self.ws_state = {}       # bit index -> confirmed 0/1
+        self.ws_at = 0.0         # last successful QPIWS parse
+        self.ws_bits = None      # last raw bit string (? = lost in the RS485 decode)
+        self.ws_known_from = None
+        self.active_fault = 0    # last QPGS0 fault code
+        self.events = deque(load_events(200), maxlen=200)  # newest first
 
-    def query(self, ser, cmd, wait=2.2):
+    def query(self, ser, cmd, wait=2.2, quiet_len=100):
         ser.reset_input_buffer()
         ser.write(pi30_frame(cmd))
         ser.flush()
@@ -327,7 +432,7 @@ class Inverter:
                 # Clean RS232 replies end in CR; with the RS485 hack, wait for the line to go quiet
                 if self.rs232 and buf.endswith(b"\r") and len(buf) > 20:
                     break
-            elif buf and len(buf) > 100:
+            elif buf and len(buf) > quiet_len:
                 break
         return buf
 
@@ -365,8 +470,20 @@ class Inverter:
                             if p:
                                 self.last_pgs, self.last_pgs_at = p, time.time()
                         pgs = self.last_pgs if time.time() - self.last_pgs_at < 30 else None
+                        if pgs:
+                            self.track_fault(pgs["faultCode"])
+                        # Warning bits: not every cycle (each query costs ~2 s on the RS485 cable)
+                        self.cycle += 1
+                        if self.cycle % 3 == 1:
+                            r3 = self.query(ser, "QPIWS", wait=2.5, quiet_len=25)
+                            t3 = self.decode(r3)
+                            self.raw_log.appendleft(
+                                f"{datetime.now():%H:%M:%S} WS {len(r3)}B  {''.join(c if 32 <= ord(c) < 127 else '·' for c in t3)}"
+                            )
+                            self.update_warnings(parse_qpiws(t3, self.qpiws_len))
                         if d and sanity_ok(d):
                             m = derive(d, pgs)
+                            m.update(self.warning_fields())
                             with self.lock:
                                 self.latest = m
                                 self.ok += 1
@@ -393,6 +510,80 @@ class Inverter:
                 print("serial error:", e)
                 time.sleep(5)
 
+    # ---------------- warnings / events
+
+    def update_warnings(self, parsed):
+        """Debounce: a bit only changes state after two identical readings in a row
+        (filters single-frame bit errors from the RS485 decode)."""
+        if not parsed:
+            return
+        bits, known_from, length = parsed
+        if known_from == 0:
+            self.qpiws_len = length
+        self.ws_at = time.time()
+        self.ws_known_from = known_from
+        self.ws_bits = "".join("?" if b is None else str(b) for b in bits)
+        prev, self.ws_prev = self.ws_prev, bits
+        if not prev or len(prev) != len(bits):
+            return
+        for i, b in enumerate(bits):
+            if b is None or prev[i] != b or i not in QPIWS_DEFS:
+                continue
+            old = self.ws_state.get(i, 0)
+            self.ws_state[i] = b
+            if b != old:
+                key, text, kind, code = QPIWS_DEFS[i]
+                self.add_event("start" if b else "clear", self.kind_of(i), code, key, text)
+
+    def kind_of(self, i):
+        kind = QPIWS_DEFS[i][2]
+        if kind == "warning*":
+            return "fault" if self.ws_state.get(1) == 1 else "warning"
+        return kind
+
+    def track_fault(self, code):
+        if code == self.active_fault:
+            return
+        if self.active_fault:
+            self.add_event("clear", "fault", f"{self.active_fault:02d}", f"fault{self.active_fault}",
+                           FAULT_CODES.get(self.active_fault, "Unknown fault"))
+        if code:
+            self.add_event("start", "fault", f"{code:02d}", f"fault{code}",
+                           FAULT_CODES.get(code, "Unknown fault - see manual"))
+        self.active_fault = code
+
+    def add_event(self, event, kind, code, key, text):
+        ev = {"timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+              "event": event, "kind": kind, "code": code or "", "key": key, "text": text}
+        with self.lock:
+            self.events.appendleft(ev)
+        print(f"{ev['timestamp']} {event.upper():5} {kind:7} {code or '--'} {text}")
+        try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            path = os.path.join(LOG_DIR, EVENTS_FILE)
+            new = not os.path.exists(path)
+            with open(path, "a", newline="") as fh:
+                w = csv.DictWriter(fh, fieldnames=EVENT_KEYS)
+                if new:
+                    w.writeheader()
+                w.writerow(ev)
+        except OSError as e:
+            print("could not write event log:", e)
+
+    def warning_fields(self):
+        fresh = bool(self.ws_at) and time.time() - self.ws_at < 120
+        active = [
+            {"bit": i, "key": QPIWS_DEFS[i][0], "text": QPIWS_DEFS[i][1],
+             "kind": self.kind_of(i), "code": QPIWS_DEFS[i][3]}
+            for i, v in sorted(self.ws_state.items()) if v and i in QPIWS_DEFS
+        ] if fresh else []
+        return {
+            "warnings": active,
+            "warningsAvailable": fresh,
+            "warningBits": self.ws_bits,
+            "warningBitsKnownFrom": self.ws_known_from,
+        }
+
     def log_csv(self, m):
         os.makedirs(LOG_DIR, exist_ok=True)
         path = os.path.join(LOG_DIR, f"{datetime.now():%Y-%m-%d}.csv")
@@ -417,7 +608,25 @@ class Inverter:
                 "badFrames": self.bad,
                 "error": self.last_error,
                 "metrics": self.latest,
+                "events": list(self.events)[:20],
             }
+
+
+EVENTS_FILE = "events.csv"
+EVENT_KEYS = ["timestamp", "event", "kind", "code", "key", "text"]
+
+
+def load_events(n):
+    """Last n warning/fault events from the log, newest first."""
+    path = os.path.join(LOG_DIR, EVENTS_FILE)
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, newline="") as fh:
+            rows = list(csv.DictReader(fh))
+    except OSError:
+        return []
+    return rows[::-1][:n]
 
 
 # ---------------------------------------------------------------- http
@@ -481,6 +690,9 @@ def make_handler(inv: Inverter):
                 return self._json({"last": inv.last_raw, "log": list(inv.raw_log)})
             if p == "/api/stream":
                 return self._stream()
+            if p == "/api/events":
+                with inv.lock:
+                    return self._json(list(inv.events))
             if p == "/api/days":
                 return self._json(daily_energy(7))
             if p == "/api/query":

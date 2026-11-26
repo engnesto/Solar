@@ -272,6 +272,23 @@
       html[data-theme^="eco"] .btn-secondary { background: transparent; color: var(--ink) !important; border: 2px solid var(--ink); }
       html[data-theme^="eco"] .btn-secondary:hover { background: var(--ink); color: var(--lcd) !important; }
 
+      /* Warning / fault chips (own classes, so the theme overrides of Tailwind colours don't fight them) */
+      .al-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.6rem;
+        border-radius: 9999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+      .al-fault { background: rgba(127, 29, 29, 0.55); color: #fecaca; border-color: #ef4444; }
+      .al-warning { background: rgba(120, 53, 15, 0.5); color: #fde68a; border-color: #f59e0b; }
+      .al-info { background: rgba(51, 65, 85, 0.5); color: #cbd5e1; border-color: #64748b; }
+      .al-ok { color: #9ca3af; font-weight: 500; padding-left: 0; }
+      .al-code { font-family: ui-monospace, monospace; font-weight: 800; }
+      html[data-theme="light"] .al-fault { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+      html[data-theme="light"] .al-warning { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+      html[data-theme="light"] .al-info { background: #e5e7eb; color: #374151; border-color: #d1d5db; }
+      html[data-theme="light"] .al-ok { color: #6b7280; }
+      html[data-theme^="eco"] .al-chip { background: transparent; color: var(--ink); border: 2px solid var(--ink); }
+      html[data-theme^="eco"] .al-warning { background: var(--ink); color: var(--lcd); }
+      html[data-theme^="eco"] .al-fault { background: var(--alert); color: var(--lcd); border-color: var(--alert); }
+      html[data-theme^="eco"] .al-ok { border-color: transparent; color: var(--ink-2); }
+
       #statusLed { flex-shrink: 0; } /* JS rewrites its classes; keep the dot round when the text truncates */
 
       /* Phones: the connection/diagnostics panel is clutter; the header badge still shows Live/Stale */
@@ -410,7 +427,7 @@
             class="raw-monitor bg-black/40 rounded-lg p-2 text-[10px] font-mono text-emerald-300/80"
           ></div>
           <div class="text-[9px] text-gray-500 mt-1">
-            ↑ Decoded replies from the inverter. Fields: gridV gridHz outV outHz VA W load% busV battV chgA SOC temp pvA pvV sccV dischgA status …
+            ↑ Decoded replies from the inverter. RX = QPIGS: gridV gridHz outV outHz VA W load% busV battV chgA SOC temp pvA pvV sccV dischgA status … · WS = QPIWS warning bits a0…a31
           </div>
         </div>
       </div>
@@ -419,6 +436,27 @@
       <div
         class="inverter-lcd rounded-2xl p-5 shadow-2xl border border-emerald-800/40"
       >
+        <!-- ALERTS: active warnings (QPIWS) and faults (QPGS0), like the warning icon + code on the LCD -->
+        <div id="alertRow" class="flex flex-wrap items-center gap-2 mb-4">
+          <div id="alertChips" class="flex flex-wrap items-center gap-2 min-w-0">
+            <span class="al-chip al-ok"><i class="fas fa-shield-alt"></i> waiting for data…</span>
+          </div>
+          <button
+            id="alertHistoryBtn"
+            class="btn-secondary ml-auto px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1"
+            title="Warnings and faults as they started and cleared"
+          >
+            <i class="fas fa-history"></i> History <span id="alertHistoryCount"></span>
+          </button>
+        </div>
+        <div id="alertHistory" class="hidden mb-4 bg-black/30 rounded-xl p-3 border border-gray-700">
+          <div class="text-[10px] text-gray-400 mb-2">
+            Warnings and faults as they start and clear · also saved to <code>events.csv</code> in the logs folder
+          </div>
+          <div class="max-h-52 overflow-y-auto">
+            <table class="w-full text-[11px]"><tbody id="alertHistoryBody"></tbody></table>
+          </div>
+        </div>
         <div
           class="grid grid-cols-1 sm:grid-cols-3 gap-5 border-b border-emerald-800/40 pb-5 mb-4"
         >
@@ -1337,7 +1375,9 @@
                   <span id="batteryCurrentVal">--</span>A
                 </div>
                 <div class="text-[10px] text-gray-400">
-                  Inv: <span id="batteryTemp">--</span>°C
+                  Inv: <span id="batteryTemp">--</span>°C ·
+                  <span title="Battery voltage as measured by the solar charger">Chg:</span>
+                  <span id="sccVoltageVal">--</span>V
                 </div>
               </div>
               <div class="relative w-16 h-16 shrink-0" title="Battery state of charge">
@@ -1393,6 +1433,20 @@
             <span id="liveTimestamp">--</span>
           </div>
         </div>
+      </div>
+
+      <!-- INVERTER DETAILS: the rest of what QPIGS / QPGS0 / QPIWS report -->
+      <div class="glass-card rounded-xl p-4" id="detailsCard">
+        <button id="detailsToggle" class="w-full flex items-center gap-2 text-left" aria-expanded="false">
+          <i class="fas fa-info-circle text-emerald-400"></i>
+          <h3 class="font-semibold text-sm shrink-0">Inverter details</h3>
+          <span id="detailsSummary" class="text-[11px] text-gray-400 truncate min-w-0"></span>
+          <i id="detailsChevron" class="fas fa-chevron-down ml-auto text-gray-400 transition-transform"></i>
+        </button>
+        <div
+          id="detailsBody"
+          class="hidden mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1 text-[13px]"
+        ></div>
       </div>
 
       <!-- POWER TRENDS: plain lines (solid / dashed / dotted), full-day time axis -->
@@ -1594,6 +1648,11 @@
         document.getElementById("chargeFlowText").innerText = "waiting for data…";
         document.getElementById("batteryStateBadge").innerHTML = '<i class="fas fa-hourglass-half mr-1"></i>WAITING';
         document.getElementById("invStatusBadge").innerHTML = '<i class="fas fa-circle text-[6px] text-gray-400"></i> WAITING';
+        document.getElementById("sccVoltageVal").innerText = "--";
+        document.getElementById("alertChips").innerHTML =
+          '<span class="al-chip al-ok"><i class="fas fa-shield-alt"></i> waiting for data…</span>';
+        document.getElementById("detailsBody").innerHTML = "";
+        document.getElementById("detailsSummary").innerText = "";
         setDiagramOffline(true);
       }
 
@@ -1649,9 +1708,10 @@
             : m.batteryDischargeCurrent < -0.2
               ? "DISCHARGING"
               : "IDLE";
+        set("sccVoltageVal", fx(m.sccBatteryVoltage, 1));
         document.getElementById("batteryStateBadge").innerHTML =
           state === "CHARGING"
-            ? '<i class="fas fa-charging-station mr-1"></i>CHARGING'
+            ? '<i class="fas fa-charging-station mr-1"></i>CHARGING' + (m.floatCharging ? " · FLOAT" : "")
             : state === "DISCHARGING"
               ? '<i class="fas fa-bolt mr-1"></i>DISCHARGING'
               : '<i class="fas fa-pause mr-1"></i>IDLE';
@@ -1680,7 +1740,118 @@
           badge.innerHTML = `<i class="fas fa-circle text-[6px] ${col}"></i> ${st}`;
           badge.title = m.faultCode ? `Fault ${m.faultCode}: ${m.faultText}` : m.chargerPriority ? `Charger priority: ${m.chargerPriority}` : "";
           if (m.faultCode && m.workMode !== "F") badge.innerHTML += ` <span class="text-red-400">· F${m.faultCode}</span>`;
+          // LCD-style warning codes, e.g. "· 04"
+          const coded = (m.warnings || []).filter((w) => w.code && w.kind !== "info");
+          if (coded.length) {
+            const red = coded.some((w) => w.kind === "fault");
+            badge.innerHTML += ` <span class="${red ? "text-red-400" : "text-amber-400"}">· ⚠ ${coded.map((w) => w.code).join(" ")}</span>`;
+            badge.title = coded.map((w) => `${w.kind === "fault" ? "Fault" : "Warning"} ${w.code}: ${w.text}`).join("\n") +
+              (badge.title ? "\n" + badge.title : "");
+          }
         }
+        renderAlerts(m);
+        renderDetails(m);
+      }
+
+      // ---------- Warnings / faults ----------
+      let alertEvents = []; // newest first: {timestamp, event: start|clear, kind, code, key, text}
+      const esc = (v) =>
+        String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const ALERT_ICON = { fault: "fa-times-circle", warning: "fa-exclamation-triangle", info: "fa-info-circle" };
+      function alertChip(kind, code, text, title) {
+        return `<span class="al-chip al-${kind}" title="${esc(title || "")}"><i class="fas ${ALERT_ICON[kind] || ALERT_ICON.info}"></i>` +
+          (code ? `<span class="al-code">${esc(code)}</span>` : "") + `${esc(text)}</span>`;
+      }
+      function renderAlerts(m) {
+        const chips = [];
+        if (m.faultCode) {
+          chips.push(alertChip("fault", String(m.faultCode).padStart(2, "0"), m.faultText || "Fault",
+            "Fault reported by the inverter (QPGS0)"));
+        }
+        const order = { fault: 0, warning: 1, info: 2 };
+        [...(m.warnings || [])]
+          .sort((a, b) => order[a.kind] - order[b.kind])
+          .forEach((w) => {
+            const since = alertEvents.find((e) => e.key === w.key && e.event === "start");
+            const t = since ? ` · since ${new Date(since.timestamp).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}` : "";
+            chips.push(alertChip(w.kind, w.code, w.text,
+              `${w.kind === "fault" ? "Fault" : w.kind === "warning" ? "Warning" : "Info"}${w.code ? " " + w.code : ""}${t}`));
+          });
+        if (!chips.length) {
+          chips.push(
+            m.warningsAvailable === false
+              ? '<span class="al-chip al-ok" title="The warning query (QPIWS) has not answered yet"><i class="fas fa-question-circle"></i> warnings not read yet</span>'
+              : '<span class="al-chip al-ok"><i class="fas fa-shield-alt"></i> No warnings</span>',
+          );
+        }
+        document.getElementById("alertChips").innerHTML = chips.join("");
+        renderAlertHistory();
+      }
+      function renderAlertHistory() {
+        const dayAgo = Date.now() - 864e5;
+        const recent = alertEvents.filter((e) => e.event === "start" && e.kind !== "info" && new Date(e.timestamp) > dayAgo).length;
+        document.getElementById("alertHistoryCount").innerText = recent ? `(${recent})` : "";
+        const body = document.getElementById("alertHistoryBody");
+        if (document.getElementById("alertHistory").classList.contains("hidden")) return;
+        body.innerHTML = alertEvents.length
+          ? alertEvents
+              .map((e) => {
+                const t = new Date(e.timestamp).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+                const ev = e.event === "start"
+                  ? `<span class="font-semibold">${e.kind === "info" ? "STARTED" : "RAISED"}</span>`
+                  : '<span class="text-gray-400">cleared</span>';
+                return `<tr class="border-b border-gray-800"><td class="py-1 pr-3 w-px font-mono text-gray-400 whitespace-nowrap">${esc(t)}</td>` +
+                  `<td class="pr-3 w-px whitespace-nowrap">${ev}</td><td>${alertChip(e.kind, e.code, e.text, e.kind)}</td></tr>`;
+              })
+              .join("")
+          : '<tr><td class="py-2 text-gray-500">No warnings or faults recorded yet</td></tr>';
+      }
+
+      // ---------- Inverter details ----------
+      const yesNo = (v, yes = "Yes", no = "No") => (v === null || v === undefined ? null : v ? yes : no);
+      const num = (v, d, unit) => (typeof v === "number" ? `${v.toFixed(d)} ${unit}` : null);
+      function chargeStage(m) {
+        if (!(m.batteryDischargeCurrent > 0.2 || m.charging)) return "Not charging";
+        if (m.floatCharging) return "Float";
+        if (m.batteryVoltageSteady) return "Absorption (constant voltage)";
+        return "Bulk (constant current)";
+      }
+      const DETAIL_ROWS = [
+        ["Charge stage", chargeStage, "From the inverter's charging flags"],
+        ["Battery status", (m) => m.batteryStatus, "QPGS0: normal / under voltage / open"],
+        ["Battery V (charger)", (m) => num(m.sccBatteryVoltage, 2, "V"), "Battery voltage measured by the solar charger"],
+        ["Total charge current", (m) => (typeof m.totalChargeCurrent === "number" ? `${m.totalChargeCurrent} A` : null)],
+        ["Max charge current", (m) => (typeof m.maxChargeCurrent === "number" ? `${m.maxChargeCurrent} A` : null), "Setting: solar + utility"],
+        ["Max AC charge current", (m) => (typeof m.maxAcChargeCurrent === "number" ? `${m.maxAcChargeCurrent} A` : null), "Setting: utility only"],
+        ["Charger priority", (m) => m.chargerPriority],
+        ["Solar charger (SCC)", (m) => yesNo(m.sccOk, "OK", "Not OK")],
+        ["DC bus voltage", (m) => num(m.busVoltage, 0, "V")],
+        ["Inverter temperature", (m) => num(m.invTemp, 0, "°C")],
+        ["Output mode", (m) => m.outputMode],
+        ["Power switch", (m) => yesNo(m.switchOn, "On", "Off")],
+        ["Fan-on voltage offset", (m) => (typeof m.fanOffset === "number" ? `${(m.fanOffset * 0.01).toFixed(2)} V` : null), "Battery-voltage offset for fans on (10 mV units)"],
+        ["EEPROM version", (m) => m.eepromVersion],
+        ["Dust-proof kit", (m) => yesNo(m.dustproofInstalled, "Installed", "Not installed")],
+        ["Settings changed", (m) => yesNo(m.configChanged), "Set when settings were changed since they were last read"],
+        ["SCC firmware updated", (m) => yesNo(m.sccFirmwareUpdated)],
+        ["SBU priority support", (m) => yesNo(m.sbuPriorityVersion)],
+        ["Warning bits (QPIWS)", (m) => (m.warningBits ? m.warningBits.match(/.{1,8}/g).join(" ") : null),
+          "a0…a31; ? = bit lost by the RS485 cable decode (unknown)"],
+      ];
+      function renderDetails(m) {
+        const stage = chargeStage(m);
+        const bits = [stage, m.batteryStatus && m.batteryStatus !== "Normal" ? `battery ${m.batteryStatus.toLowerCase()}` : null,
+          typeof m.busVoltage === "number" ? `bus ${Math.round(m.busVoltage)} V` : null,
+          m.chargerPriority].filter(Boolean);
+        document.getElementById("detailsSummary").innerText = bits.length ? "· " + bits.join(" · ") : "";
+        const body = document.getElementById("detailsBody");
+        if (body.classList.contains("hidden")) return; // collapsed: skip the work
+        body.innerHTML = DETAIL_ROWS.map(([label, fn, tip]) => {
+          const v = fn(m);
+          if (v === null || v === undefined || v === "") return "";
+          return `<div class="flex justify-between gap-3 border-b border-gray-800 py-1" title="${esc(tip || "")}">` +
+            `<span class="text-gray-400">${esc(label)}</span><span class="font-mono text-right break-all">${esc(v)}</span></div>`;
+        }).join("");
       }
 
       // Mirrors the inverter LCD: active parts at full opacity, inactive ones dimmed
@@ -2165,6 +2336,7 @@
           return;
         }
         const m = st.metrics;
+        if (Array.isArray(st.events)) alertEvents = st.events;
         lastDataAt = new Date(m.timestamp).getTime();
         Object.assign(latestMetrics, m);
         if (!document.hidden) updateUIFromMetrics(latestMetrics); // hidden tab: collect only, draw on return
@@ -2260,7 +2432,7 @@
       let demoInterval;
       // Demo = a small, physically consistent simulation that produces the same fields as the
       // real server, so every card and the diagram behave exactly as they would live.
-      const demoState = { soc: 70, cloudUntil: 0, lineMode: false, lastT: Date.now() };
+      const demoState = { soc: 70, cloudUntil: 0, lineMode: false, lastT: Date.now(), battLow: false };
       function demoTick() {
         const now = Date.now();
         const dtH = Math.min(10, (now - demoState.lastT) / 1000) / 3600; // hours since last tick
@@ -2298,6 +2470,13 @@
         const batteryCurrent = +(batteryPower / batteryVoltage).toFixed(1);
         const charging = batteryCurrent > 0.2;
         const chargeTxt = charging ? "BATTERY CHARGING" : batteryCurrent < -0.2 ? "BATTERY DISCHARGING" : "";
+        // Demo warning 04 (low battery) below 25 %, cleared above 30 %
+        const battLow = demoState.soc < 25 || (demoState.battLow && demoState.soc < 30);
+        if (battLow !== demoState.battLow) {
+          demoState.battLow = battLow;
+          alertEvents.unshift({ timestamp: new Date().toISOString(), event: battLow ? "start" : "clear",
+            kind: "warning", code: "04", key: "battLow", text: "Low battery" });
+        }
 
         return {
           timestamp: new Date(),
@@ -2313,6 +2492,16 @@
           solarToLoad, batteryToLoad, gridToLoad,
           invTemp: Math.round(44 + loadPower / 200),
           workMode, faultCode: 0, chargerPriority: "Only solar",
+          warnings: battLow ? [{ bit: 12, key: "battLow", text: "Low battery", kind: "warning", code: "04" }] : [],
+          warningsAvailable: true,
+          warningBits: "00000000000" + (battLow ? "1" : "0") + "00000000000000000000",
+          busVoltage: 385 + Math.round(Math.sin(now / 6000) * 4),
+          sccBatteryVoltage: +(batteryVoltage + 0.1).toFixed(2),
+          floatCharging: charging && demoState.soc >= 98, batteryVoltageSteady: charging && demoState.soc >= 90,
+          batteryStatus: "Normal", sccOk: true, outputMode: "Single unit",
+          maxChargeCurrent: 60, maxAcChargeCurrent: 30, totalChargeCurrent: Math.max(0, Math.round(batteryCurrent)),
+          switchOn: true, dustproofInstalled: false, fanOffset: 0, eepromVersion: "00",
+          configChanged: false, sccFirmwareUpdated: false, sbuPriorityVersion: true,
           charging, sccCharging: pvPower > 5, acCharging: false,
           invStatus:
             workMode === "L"
@@ -2331,6 +2520,7 @@
       }
       function setMode(mode) {
         currentMode = mode;
+        alertEvents = []; // demo and live keep separate histories (live comes from the server)
         if (mode === "demo") {
           stopLive();
           isSerialConnected = false;
@@ -2376,6 +2566,21 @@
       document.getElementById("serialRawMonitorBtn").onclick = () => {
         document.getElementById("rawMonitorPanel").classList.toggle("hidden");
       };
+      document.getElementById("alertHistoryBtn").onclick = () => {
+        document.getElementById("alertHistory").classList.toggle("hidden");
+        renderAlertHistory();
+      };
+      // Details panel: open/closed state remembered per browser
+      function setDetailsOpen(open) {
+        document.getElementById("detailsBody").classList.toggle("hidden", !open);
+        document.getElementById("detailsChevron").style.transform = open ? "rotate(180deg)" : "";
+        document.getElementById("detailsToggle").setAttribute("aria-expanded", open ? "true" : "false");
+        try { localStorage.setItem("pg-details-open", open ? "1" : "0"); } catch (e) {}
+        if (open && latestMetrics) renderDetails(latestMetrics);
+      }
+      document.getElementById("detailsToggle").onclick = () =>
+        setDetailsOpen(document.getElementById("detailsBody").classList.contains("hidden"));
+      try { if (localStorage.getItem("pg-details-open") === "1") setDetailsOpen(true); } catch (e) {}
       document.getElementById("clearRawBtn").onclick = () => {
         rawLogEntries = [];
         document.getElementById("rawDataLog").innerHTML = "";

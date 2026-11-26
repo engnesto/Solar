@@ -1968,6 +1968,8 @@
         { width: 2, dash: [7, 4] },
         { width: 2, dash: [2, 3] },
       ];
+      // Load drawn as a thin dash-dot reference line on the breakdown tabs (the total the others add up to)
+      const LOAD_STYLE = { width: 1.5, dash: [10, 3, 2, 3] };
       let currentChartTab = "prod";
       let liveDays = null; // per-day kWh from /api/days (Live mode)
 
@@ -2060,7 +2062,7 @@
         return out;
       }
 
-      // The series on each tab: [colour, label, value at one reading (W), value per day (kWh)]
+      // The series on each tab: [colour, label, value at one reading (W), value per day (kWh), optional line style]
       function tabSeries() {
         if (currentChartTab === "prod")
           return [
@@ -2072,15 +2074,18 @@
             [SRC.solar, "From solar", (p) => p.solarToLoad || 0, (d) => d.solarToLoad],
             [SRC.battery, "From battery", (p) => p.batteryToLoad || 0, (d) => d.battToLoad],
             [SRC.grid, "From grid", (p) => p.gridToLoad || 0, (d) => d.gridToLoad],
+            [SRC.home, "Load", (p) => p.loadPower || 0, (d) => d.load, LOAD_STYLE],
           ];
         return currentTimeRange === "today"
           ? [
               [SRC.battery, "Battery (+ charging, − discharging)", (p) => p.batteryPower || 0],
               [SRC.grid, "Grid", (p) => Math.max(0, p.gridPower || 0)],
+              [SRC.home, "Load", (p) => p.loadPower || 0, null, LOAD_STYLE],
             ]
           : [
               [SRC.battery, "Battery → load", null, (d) => d.battToLoad],
               [SRC.grid, "Grid → load", null, (d) => d.gridToLoad],
+              [SRC.home, "Load", null, (d) => d.load, LOAD_STYLE],
             ];
       }
 
@@ -2088,8 +2093,8 @@
       function renderLegend(series) {
         const th = chartTheme();
         document.getElementById("chartLegend").innerHTML = series
-          .map(([col, label], i) => {
-            const st = LINE_STYLE[i];
+          .map(([col, label, , , style], i) => {
+            const st = style || LINE_STYLE[i];
             const c = th.mono ? th.ink : col;
             return `<span class="lg-item"><svg width="26" height="8" aria-hidden="true"><line x1="1" y1="4" x2="25" y2="4"
               stroke="${c}" stroke-width="${st.width}" stroke-dasharray="${st.dash.join(" ")}" stroke-linecap="round"/></svg>${label}</span>`;
@@ -2120,8 +2125,8 @@
         const bm = bucketMinutes();
         const pts = today ? todayPoints() : [];
         const days = today ? [] : weekDays();
-        const datasets = series.map(([col, label, perReading, perDay], i) => {
-          const st = LINE_STYLE[i];
+        const datasets = series.map(([col, label, perReading, perDay, style], i) => {
+          const st = style || LINE_STYLE[i];
           return {
             label,
             data: today ? bucketize(pts, perReading, bm) : days.map(perDay),

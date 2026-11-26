@@ -708,6 +708,13 @@ def make_handler(inv: Inverter):
                     return self._json(list(inv.events))
             if p == "/api/days":
                 return self._json(daily_energy(7))
+            if p == "/api/day":
+                # One logged day's readings, e.g. /api/day?date=2026-11-25
+                from urllib.parse import parse_qs, urlparse
+                date = parse_qs(urlparse(self.path).query).get("date", [""])[0]
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+                    return self._json({"error": "date must be YYYY-MM-DD"})
+                return self._json(day_rows(date))
             if p == "/api/query":
                 # Read-only diagnostics, e.g. /api/query?cmd=QPGS0 (only Q... query commands)
                 from urllib.parse import parse_qs, urlparse
@@ -771,10 +778,12 @@ def csv_mode(status, grid_w):
     return "inverter"
 
 
-def load_today_history(inv: Inverter):
-    path = os.path.join(LOG_DIR, f"{datetime.now():%Y-%m-%d}.csv")
+def day_rows(date_str):
+    """All logged readings of one day (YYYY-MM-DD), with the load split added."""
+    path = os.path.join(LOG_DIR, f"{date_str}.csv")
     if not os.path.exists(path):
-        return
+        return []
+    rows = []
     with open(path, newline="") as fh:
         for row in csv.DictReader(fh):
             for k, v in row.items():
@@ -786,7 +795,12 @@ def load_today_history(inv: Inverter):
             gp = row.get("gridPower", 0)
             s2l, b2l, g2l = split_load(load, pv, bp, csv_mode(row.get("invStatus"), gp))
             row.update(solarToLoad=s2l, batteryToLoad=b2l, gridToLoad=g2l)
-            inv.history.append(row)
+            rows.append(row)
+    return rows
+
+
+def load_today_history(inv: Inverter):
+    inv.history.extend(day_rows(f"{datetime.now():%Y-%m-%d}"))
 
 
 if __name__ == "__main__":

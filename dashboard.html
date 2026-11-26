@@ -53,6 +53,10 @@
         background-size: 24px 24px;
         border: 1px solid #2c5a44;
       }
+      /* Weekly Summary rows open that day in Power Trends */
+      .day-row { cursor: pointer; }
+      .day-row:hover, .day-row:focus-visible { background: rgba(46, 204, 113, 0.08); outline: none; }
+      .day-row.day-row-sel { background: rgba(46, 204, 113, 0.16); font-weight: 600; }
       .glow-green {
         text-shadow: 0 0 4px #2ecc71;
       }
@@ -1457,6 +1461,10 @@
             >
               7 Days
             </button>
+            <button
+              id="trendDayBtn"
+              class="trend-range hidden px-3 py-1.5 rounded-md text-xs font-medium text-gray-300"
+            ></button>
           </div>
         </div>
         <div class="grid grid-cols-3 gap-1 bg-gray-800/50 rounded-lg p-1">
@@ -1965,7 +1973,11 @@
       // Axis label for a whole hour: "12 AM", "1 AM" … "11 PM" (or "00"…"23" in 24 h locales)
       const hourTick = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
 
+      // A past day picked in the Weekly Summary: { date: "YYYY-MM-DD", label, points }
+      let pickedDay = null;
+
       function todayPoints() {
+        if (currentTimeRange === "day") return pickedDay?.points || [];
         if (currentMode !== "serial") return getTodayData();
         const today = new Date().toDateString();
         return serialHistory.filter((p) => p.timestamp instanceof Date && p.timestamp.toDateString() === today);
@@ -2054,7 +2066,7 @@
             [SRC.grid, "From grid", (p) => p.gridToLoad || 0, (d) => d.gridToLoad],
             [SRC.home, "Load", (p) => p.loadPower || 0, (d) => d.load, LOAD_STYLE],
           ];
-        return currentTimeRange === "today"
+        return currentTimeRange !== "week"
           ? [
               [SRC.battery, "Battery (+ charging, − discharging)", (p) => p.batteryPower || 0],
               [SRC.grid, "Grid", (p) => Math.max(0, p.gridPower || 0)],
@@ -2098,7 +2110,7 @@
 
       function buildTrendConfig() {
         const th = chartTheme();
-        const today = currentTimeRange === "today";
+        const today = currentTimeRange !== "week"; // Today or a picked day: one 24 h axis
         const series = tabSeries();
         const bm = bucketMinutes();
         const pts = today ? todayPoints() : [];
@@ -2174,7 +2186,7 @@
       }
 
       function renderChart() {
-        const today = currentTimeRange === "today";
+        const today = currentTimeRange !== "week";
         const empty = today ? !todayPoints().length : !weekDays().length;
         document.getElementById("chartEmpty").classList.toggle("hidden", !empty);
         const { series, config } = buildTrendConfig();
@@ -2186,7 +2198,7 @@
         if (empty) return;
         const ctx = document.getElementById("powerChartCanvas").getContext("2d");
         chartInstance = new Chart(ctx, config);
-        if (today && scrollToNowPending) {
+        if (currentTimeRange === "today" && scrollToNowPending) {
           scrollToNowPending = false;
           scrollChartToNow();
         }
@@ -2219,7 +2231,8 @@
           tbody.innerHTML = days
             .map((d) => {
               total += d.solar;
-              return `<tr class="border-b border-gray-800"><td class="py-2">${d.day}</td><td class="text-right font-mono">${d.solar.toFixed(2)}</td><td class="text-right font-mono">${d.load.toFixed(2)}</td><td class="text-right">${d.solarToLoad.toFixed(2)}</td><td class="text-right">${d.battToLoad.toFixed(2)}</td><td class="text-right">${d.gridToLoad.toFixed(2)}</td></tr>`;
+              const sel = currentTimeRange === "day" && pickedDay?.date === d.date;
+              return `<tr class="day-row border-b border-gray-800${sel ? " day-row-sel" : ""}" data-date="${d.date}" data-label="${d.day}" tabindex="0" title="Show this day in Power Trends"><td class="py-2"><i class="fas fa-chart-line text-emerald-400/60 mr-1"></i>${d.day}</td><td class="text-right font-mono">${d.solar.toFixed(2)}</td><td class="text-right font-mono">${d.load.toFixed(2)}</td><td class="text-right">${d.solarToLoad.toFixed(2)}</td><td class="text-right">${d.battToLoad.toFixed(2)}</td><td class="text-right">${d.gridToLoad.toFixed(2)}</td></tr>`;
             })
             .join("");
           document.getElementById("weekTotalSpan").innerHTML = `${total.toFixed(2)} kWh total solar`;
@@ -2511,6 +2524,15 @@
       function setMode(mode) {
         currentMode = mode;
         alertEvents = []; // demo and live keep separate histories (live comes from the server)
+        if (pickedDay) {
+          // a picked day is a live log: drop it when switching modes
+          pickedDay = null;
+          if (currentTimeRange === "day") currentTimeRange = "today";
+          document.getElementById("trendDayBtn").classList.add("hidden");
+          document.getElementById("trendTodayBtn").className =
+            "trend-range px-3 py-1.5 rounded-md text-xs font-medium " +
+            (currentTimeRange === "today" ? "bg-emerald-700 text-white" : "text-gray-300");
+        }
         if (mode === "demo") {
           stopLive();
           isSerialConnected = false;
@@ -2575,23 +2597,56 @@
         rawLogEntries = [];
         document.getElementById("rawDataLog").innerHTML = "";
       };
+      // Range pills: Today · 7 Days · (picked day, only shown while one is open)
+      function setTimeRange(range) {
+        currentTimeRange = range;
+        const pill = "trend-range px-3 py-1.5 rounded-md text-xs font-medium ";
+        [["today", "trendTodayBtn"], ["week", "trendWeekBtn"], ["day", "trendDayBtn"]].forEach(([r, id]) => {
+          document.getElementById(id).className =
+            pill + (r === range ? "bg-emerald-700 text-white" : "text-gray-300") + (r === "day" && !pickedDay ? " hidden" : "");
+        });
+        document.querySelectorAll("#summaryTbody .day-row").forEach((tr) =>
+          tr.classList.toggle("day-row-sel", range === "day" && tr.dataset.date === pickedDay?.date));
+        renderChart();
+      }
       document.getElementById("trendTodayBtn").onclick = () => {
-        currentTimeRange = "today";
         scrollToNowPending = true;
-        document.getElementById("trendTodayBtn").className =
-          "trend-range px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-700 text-white";
-        document.getElementById("trendWeekBtn").className =
-          "trend-range px-3 py-1.5 rounded-md text-xs font-medium text-gray-300";
-        renderChart();
+        setTimeRange("today");
       };
-      document.getElementById("trendWeekBtn").onclick = () => {
-        currentTimeRange = "week";
-        document.getElementById("trendWeekBtn").className =
-          "trend-range px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-700 text-white";
-        document.getElementById("trendTodayBtn").className =
-          "trend-range px-3 py-1.5 rounded-md text-xs font-medium text-gray-300";
-        renderChart();
-      };
+      document.getElementById("trendWeekBtn").onclick = () => setTimeRange("week");
+      document.getElementById("trendDayBtn").onclick = () => setTimeRange("day");
+
+      // Weekly Summary row -> that day's readings in the Power Trends chart
+      async function openDay(date, label) {
+        if (date === localDateStr(new Date())) {
+          scrollToNowPending = true;
+          setTimeRange("today");
+        } else {
+          try {
+            const rows = await (await fetch(API + "/api/day?date=" + date, { cache: "no-store" })).json();
+            pickedDay = { date, label, points: Array.isArray(rows) ? rows.map(toHistoryPoint) : [] };
+          } catch (e) {
+            pickedDay = { date, label, points: [] };
+          }
+          document.getElementById("trendDayBtn").textContent = label.split(" ").slice(0, 2).join(" ");
+          setTimeRange("day");
+        }
+        document.getElementById("trendsCard").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      const localDateStr = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const summaryTbody = document.getElementById("summaryTbody");
+      summaryTbody.addEventListener("click", (e) => {
+        const tr = e.target.closest(".day-row");
+        if (tr) openDay(tr.dataset.date, tr.dataset.label);
+      });
+      summaryTbody.addEventListener("keydown", (e) => {
+        const tr = e.target.closest(".day-row");
+        if (tr && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          openDay(tr.dataset.date, tr.dataset.label);
+        }
+      });
       document.querySelectorAll(".chart-tab").forEach((btn) => {
         btn.onclick = () => {
           currentChartTab = btn.dataset.tab;

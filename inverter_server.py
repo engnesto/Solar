@@ -425,6 +425,11 @@ class Inverter:
 
 def make_handler(inv: Inverter):
     class H(SimpleHTTPRequestHandler):
+        # Don't trust the OS registry (Windows sometimes maps .js to text/plain)
+        extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
+                          ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
+                          ".woff2": "font/woff2", ".ttf": "font/ttf"}
+
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=HERE, **kw)
 

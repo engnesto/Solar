@@ -9,17 +9,19 @@
     <title>PowerGray · PowerWatch · MPS 5KVA-60 Inverter Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="theme-color" content="#0b1418" />
-    <!-- Tailwind + Font Awesome + Chart.js -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
-    />
+    <!-- Tailwind + Font Awesome + Chart.js + fonts: all served locally from vendor/ so the page works offline -->
+    <script src="vendor/js/tailwind-3.4.17.js"></script>
+    <script src="vendor/js/chart-4.4.0.umd.min.js"></script>
+    <link rel="stylesheet" href="vendor/css/fontawesome-all.min.css" />
+    <style>
+      @font-face {
+        font-family: "Inter";
+        src: url("vendor/fonts/inter-latin-wght.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
     <style>
       * {
         font-family:
@@ -178,7 +180,7 @@
       /* ---------- ECO (reflective monochrome LCD) ---------- */
       @font-face {
         font-family: "DSEG7";
-        src: url("https://cdn.jsdelivr.net/npm/dseg@0.46.0/fonts/DSEG7-Classic/DSEG7Classic-Bold.woff2") format("woff2");
+        src: url("vendor/fonts/DSEG7Classic-Bold.woff2") format("woff2");
         font-display: swap;
       }
       html[data-theme="eco"] {

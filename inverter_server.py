@@ -272,6 +272,21 @@ def sanity_ok(d) -> bool:
     )
 
 
+def split_load(load, pv_w, batt_w, mode):
+    """Split the load into (solar, battery, grid) parts that always add up to the load.
+    mode: "line" = grid feeds the load through the bypass; "inverter" = PV + battery feed it;
+    "unknown" = mode not reported but the grid is up (PV, then the measured battery, then grid)."""
+    if mode == "line":
+        return 0, 0, load
+    solar = min(load, pv_w)
+    if mode == "unknown":
+        batt = min(load - solar, max(0, -batt_w))
+        return solar, batt, load - solar - batt
+    # Inverter mode: the battery is the only other source. Its current is only reported in
+    # whole amps (~55 W steps), so take the rest of the load as battery instead of measuring it.
+    return solar, load - solar, 0
+
+
 def derive(d, pgs=None):
     """Turn raw QPIGS (+ optional QPGS0) into the metrics dashboard.html expects."""
     pv_w = d["pvPowerReported"]
@@ -293,20 +308,18 @@ def derive(d, pgs=None):
         grid_v = d["outputVoltage"] if grid_present else 0.0
         grid_v_est = True
 
-    batt_out = max(0, -batt_w)
     batt_in = max(0, batt_w)
     work = pgs["workMode"] if pgs else None
     ac_charging = pgs["acCharging"] if pgs else d["acCharging"]
 
     if work == "L":
         # Line mode: the grid feeds the load through the bypass; PV only charges the battery
-        solar_to_load, batt_to_load, grid_to_load = 0, 0, load
+        solar_to_load, batt_to_load, grid_to_load = split_load(load, pv_w, batt_w, "line")
         grid_w = load + (max(0, batt_in - pv_w) if ac_charging else 0)
     else:
         # Inverter mode (or mode unknown): energy balance PV + battery (+grid) -> load
-        solar_to_load = min(load, pv_w)
-        batt_to_load = min(load - solar_to_load, batt_out)
-        grid_to_load = max(0, load - solar_to_load - batt_to_load) if (grid_present and work is None) else 0
+        solar_to_load, batt_to_load, grid_to_load = split_load(
+            load, pv_w, batt_w, "unknown" if (grid_present and work is None) else "inverter")
         grid_w = (max(0, batt_in - pv_w) if ac_charging else 0) + grid_to_load
 
     charge_txt = "BATTERY CHARGING" if batt_net_a > 0 else "BATTERY DISCHARGING" if batt_net_a < 0 else ""
@@ -734,12 +747,10 @@ def daily_energy(days=7):
                     bp, gp = float(row["batteryPower"]), float(row.get("gridPower") or 0)
                 except (KeyError, ValueError, TypeError):
                     continue
+                s2l, b2l, g2l = split_load(load, pv, bp, csv_mode(row.get("invStatus"), gp))
                 dt = 30.0 if prev is None else min(120.0, max(0.0, (t - prev).total_seconds()))
                 prev = t
                 h = dt / 3600.0 / 1000.0  # W·s -> kWh
-                s2l = min(load, pv)
-                b2l = min(load - s2l, max(0.0, -bp))
-                g2l = max(0.0, load - s2l - b2l) if gp > 0 else 0.0
                 tot["solar"] += pv * h
                 tot["load"] += load * h
                 tot["solarToLoad"] += s2l * h
@@ -748,6 +759,16 @@ def daily_energy(days=7):
         out.append({"day": f"{day:%a %d %b}", "date": f"{day:%Y-%m-%d}",
                     **{k: round(v, 2) for k, v in tot.items()}})
     return out
+
+
+def csv_mode(status, grid_w):
+    """Recover split_load's mode from a logged row (the CSV keeps invStatus, not workMode)."""
+    status = str(status or "")
+    if status.startswith("LINE MODE"):
+        return "line"
+    if status.endswith("(est.)") and isinstance(grid_w, (int, float)) and grid_w > 0:
+        return "unknown"
+    return "inverter"
 
 
 def load_today_history(inv: Inverter):
@@ -762,9 +783,9 @@ def load_today_history(inv: Inverter):
                 except (TypeError, ValueError):
                     pass
             load, pv, bp = row.get("loadPower", 0), row.get("pvPower", 0), row.get("batteryPower", 0)
-            s2l = min(load, pv)
-            b2l = min(load - s2l, max(0, -bp))
-            row.update(solarToLoad=s2l, batteryToLoad=b2l, gridToLoad=max(0, load - s2l - b2l))
+            gp = row.get("gridPower", 0)
+            s2l, b2l, g2l = split_load(load, pv, bp, csv_mode(row.get("invStatus"), gp))
+            row.update(solarToLoad=s2l, batteryToLoad=b2l, gridToLoad=g2l)
             inv.history.append(row)
 
 

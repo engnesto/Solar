@@ -50,6 +50,33 @@ def migrate_old_logs():
     except OSError:
         pass
 
+
+def day_log_path(day):
+    """Daily log file, grouped as <LOG_DIR>/<year>/<month>/<YYYY-MM-DD>.csv.
+    `day` is a date/datetime or a 'YYYY-MM-DD' string."""
+    s = day if isinstance(day, str) else f"{day:%Y-%m-%d}"
+    return os.path.join(LOG_DIR, s[:4], s[5:7], f"{s}.csv")
+
+
+def file_logs_by_month():
+    """Move flat <LOG_DIR>/YYYY-MM-DD.csv files into their year/month folders (one-time)."""
+    if not os.path.isdir(LOG_DIR):
+        return
+    for name in os.listdir(LOG_DIR):
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}\.csv", name):
+            continue
+        src, dst = os.path.join(LOG_DIR, name), day_log_path(name[:-4])
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if os.path.exists(dst):
+                with open(src) as a, open(dst, "a") as b:
+                    b.writelines(a.readlines()[1:])  # skip header
+                os.remove(src)
+            else:
+                os.replace(src, dst)
+        except OSError as e:
+            print(f"Could not file log {src}: {e} (continuing)")
+
 # ---------------------------------------------------------------- protocol
 
 
@@ -598,8 +625,8 @@ class Inverter:
         }
 
     def log_csv(self, m):
-        os.makedirs(LOG_DIR, exist_ok=True)
-        path = os.path.join(LOG_DIR, f"{datetime.now():%Y-%m-%d}.csv")
+        path = day_log_path(datetime.now())
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         new = not os.path.exists(path)
         keys = ["timestamp", "pvPower", "pvVoltage", "pvCurrent", "loadPower", "apparentPower",
                 "outputVoltage", "outputFrequency", "gridVoltage", "gridFrequency", "gridPower",
@@ -740,7 +767,7 @@ def daily_energy(days=7):
     today = datetime.now().date()
     for i in range(days - 1, -1, -1):
         day = today - timedelta(days=i)
-        path = os.path.join(LOG_DIR, f"{day:%Y-%m-%d}.csv")
+        path = day_log_path(day)
         if not os.path.exists(path):
             continue
         tot = {"solar": 0.0, "load": 0.0, "solarToLoad": 0.0, "battToLoad": 0.0, "gridToLoad": 0.0}
@@ -780,7 +807,7 @@ def csv_mode(status, grid_w):
 
 def day_rows(date_str):
     """All logged readings of one day (YYYY-MM-DD), with the load split added."""
-    path = os.path.join(LOG_DIR, f"{date_str}.csv")
+    path = day_log_path(date_str)
     if not os.path.exists(path):
         return []
     rows = []
@@ -812,6 +839,7 @@ if __name__ == "__main__":
     a = ap.parse_args()
 
     migrate_old_logs()
+    file_logs_by_month()
     inv = Inverter(a.port, a.rs232, a.interval)
     load_today_history(inv)
     threading.Thread(target=inv.run, daemon=True).start()

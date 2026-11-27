@@ -1779,10 +1779,10 @@
               : '<i class="fas fa-pause mr-1"></i>IDLE';
         document.getElementById("chargeFlowText").innerHTML =
           state === "CHARGING"
-            ? `🔋 charging +${m.batteryDischargeCurrent.toFixed(1)}A`
+            ? `charging +${m.batteryDischargeCurrent.toFixed(1)}A`
             : state === "DISCHARGING"
-              ? `⚡ discharging ${Math.abs(m.batteryDischargeCurrent).toFixed(1)}A`
-              : `🔋 standby`;
+              ? `discharging ${Math.abs(m.batteryDischargeCurrent).toFixed(1)}A`
+              : "standby";
         set("liveTimestamp", new Date().toLocaleTimeString());
         updateFlowDiagram(m);
         const badge = document.getElementById("invStatusBadge");

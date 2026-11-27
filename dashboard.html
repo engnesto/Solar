@@ -73,15 +73,13 @@
         padding: 0.2rem 0.4rem; color: inherit; font: inherit; font-size: 12px; max-width: 14rem;
       }
       .set-ctl input[type="number"] { width: 5.5rem; }
-      /* Password box: light fill + readable placeholder in every theme */
+      /* Password box: no fill, outlined in the theme's ink like the Unlock button next to it */
       #settingsLockBar input {
-        background: rgba(255, 255, 255, 0.12); border-color: currentColor;
-        width: 9rem; min-width: 0; flex: 1 1 7rem; padding: 0.3rem 0.5rem;
+        background: transparent; border: 1px solid currentColor; border-radius: 0.4rem;
+        width: 9rem; min-width: 0; flex: 1 1 7rem; padding: 0.15rem 0.6rem; font-size: 12px;
       }
       #settingsLockBar input::placeholder { color: currentColor; opacity: 0.6; }
-      html[data-theme="eco"] #settingsLockBar input, html[data-theme="light"] #settingsLockBar input {
-        background: rgba(255, 255, 255, 0.55);
-      }
+      #settingsLockBar input:focus { outline: 2px solid currentColor; outline-offset: 1px; }
       .set-ctl option { color: #111; }
       .set-btn { border: 1px solid currentColor; border-radius: 0.4rem; padding: 0.15rem 0.6rem; font-size: 12px; opacity: 0.85; }
       .set-btn:hover { opacity: 1; }

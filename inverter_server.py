@@ -1030,7 +1030,7 @@ def make_handler(inv: Inverter, auth: Auth):
                 s = dict(inv.settings) if inv.settings else None
                 read_at = inv.settings_at
             if not inv.rs232:
-                why = "Settings need the RS232 cable (the server is reading through RS485)."
+                why = "Check cable! Not plugged in or faulty."
             elif not s:
                 why = "Reading the settings from the inverter…"
             else:
@@ -1070,7 +1070,7 @@ def make_handler(inv: Inverter, auth: Auth):
                 if not auth.check(self._token()):
                     return self._json({"error": "Please unlock settings first"}, 401, cors=False)
                 if not inv.rs232 or not inv.settings:
-                    return self._json({"error": "Settings need the RS232 cable and a settings read"}, 409, cors=False)
+                    return self._json({"error": "Check cable! Not plugged in or faulty."}, 409, cors=False)
                 key, value = body.get("key"), body.get("value")
                 with inv.lock:
                     current = dict(inv.settings)

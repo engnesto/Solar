@@ -62,6 +62,15 @@
       #summaryTable th:first-child, #summaryTable td:first-child { padding-left: 0; }
       #summaryTable th { font-weight: 600; line-height: 1.15; vertical-align: bottom; }
       #summaryTable th small { display: block; font-weight: 400; opacity: 0.7; }
+      /* Today's peak readings above the chart */
+      .peak-chip {
+        display: inline-flex; align-items: baseline; gap: 0.4rem;
+        padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem;
+        border: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 25%, transparent);
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+      }
+      .peak-chip .peak-lbl { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.65; }
+      .peak-chip .peak-time { opacity: 0.65; }
       /* Pinned W scale over a sideways-scrolling Today chart */
       #chartYAxis span {
         position: absolute; right: 0; transform: translateY(-50%);
@@ -1489,7 +1498,8 @@
           </button>
         </div>
         <div id="chartLegend" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-300"></div>
-        <div id="chartPeak" class="hidden text-xs text-gray-400 -mt-2"></div>
+        <div id="chartPeak" class="hidden flex flex-wrap gap-2 -mt-1"
+             title="Highest single reading today (the lines are 15-minute averages)"></div>
         <div class="relative">
           <!-- Today view needs room for 24 hourly labels: on narrow screens it scrolls sideways,
                and the W scale is pinned over the right edge (#chartYAxis) so it stays readable -->
@@ -2033,14 +2043,9 @@
       }
 
       // Chart-only smoothing: raw 30 s readings are spiky (and the RS485 decode drops to 0 now and then),
-      // so each line shows short averages. Bucket size follows the chart width (~3 px per bucket):
-      // 5 min on desktop, 15 min on a phone. A run of empty buckets (server off) becomes a null,
-      // so the line breaks instead of bridging the gap.
-      function bucketMinutes() {
-        const w = document.getElementById("powerChartCanvas")?.parentElement?.clientWidth || 600;
-        const ideal = 1440 / Math.max(60, (w - 60) / 3);
-        return [5, 10, 15, 30].find((m) => m >= ideal) || 30;
-      }
+      // so each line shows 15-minute averages on every screen (5 min looked too jagged).
+      // A run of empty buckets (server off) becomes a null, so the line breaks instead of bridging the gap.
+      const BUCKET_MIN = 15;
       function bucketize(points, f, BUCKET_MIN) {
         const sums = new Map();
         points.forEach((p) => {
@@ -2142,20 +2147,21 @@
       };
 
       // Above the chart: the highest single reading, since the lines are short averages and run lower
-      function renderPeak(series, pts, bm) {
+      // One small chip per line: "SOLAR PEAK  357 W  8:53 AM"
+      function renderPeak(series, pts) {
         const el = document.getElementById("chartPeak");
         if (currentTimeRange === "week" || currentChartTab !== "prod" || !pts.length) {
           el.classList.add("hidden");
           return;
         }
-        el.innerHTML =
-          series
-            .map(([, label, f]) => {
-              let best = null;
-              pts.forEach((p) => { if (!best || f(p) > f(best)) best = p; });
-              return `Peak ${label.toLowerCase()} <b>${fmtW(f(best))}</b> at ${hourLabel(hourOf(best))}`;
-            })
-            .join(" · ") + ` <span class="opacity-70">(lines show ${bm}-min averages)</span>`;
+        el.innerHTML = series
+          .map(([, label, f]) => {
+            let best = null;
+            pts.forEach((p) => { if (!best || f(p) > f(best)) best = p; });
+            return `<span class="peak-chip"><span class="peak-lbl">${label} peak</span>` +
+              `<b>${fmtW(f(best))}</b><span class="peak-time">${hourLabel(hourOf(best))}</span></span>`;
+          })
+          .join("");
         el.classList.remove("hidden");
       }
 
@@ -2164,7 +2170,7 @@
         const today = currentTimeRange !== "week"; // Today or a picked day: one 24 h axis
         const pin = today && (document.getElementById("chartScroll")?.clientWidth || 0) < TODAY_CHART_MIN_W;
         const series = tabSeries();
-        const bm = bucketMinutes();
+        const bm = BUCKET_MIN;
         const pts = today ? todayPoints() : [];
         const days = today ? [] : weekDays();
         const datasets = series.map(([col, label, perReading, perDay, style], i) => {
@@ -2244,7 +2250,7 @@
         document.getElementById("chartEmpty").classList.toggle("hidden", !empty);
         const { series, config } = buildTrendConfig();
         renderLegend(series);
-        renderPeak(series, today ? todayPoints() : [], bucketMinutes());
+        renderPeak(series, today ? todayPoints() : []);
         if (chartInstance) chartInstance.destroy();
         chartInstance = null;
         // 24 hourly labels need ~40 px each; narrower screens get a sideways-scrolling chart

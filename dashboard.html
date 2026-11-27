@@ -62,6 +62,26 @@
       #summaryTable th:first-child, #summaryTable td:first-child { padding-left: 0; }
       #summaryTable th { font-weight: 600; line-height: 1.15; vertical-align: bottom; }
       #summaryTable th small { display: block; font-weight: 400; opacity: 0.7; }
+      /* Inverter settings card */
+      .set-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem 0.75rem;
+                 padding: 0.4rem 0; border-bottom: 1px solid rgba(148, 163, 184, 0.15); font-size: 13px; }
+      .set-row .set-label { min-width: 0; flex: 1 1 12rem; }
+      .set-row .set-val { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+      .set-ctl { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+      .set-ctl select, .set-ctl input, #settingsLockBar input {
+        background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 0.4rem;
+        padding: 0.2rem 0.4rem; color: inherit; font: inherit; font-size: 12px; max-width: 14rem;
+      }
+      .set-ctl input[type="number"] { width: 5.5rem; }
+      .set-ctl option { color: #111; }
+      .set-btn { border: 1px solid currentColor; border-radius: 0.4rem; padding: 0.15rem 0.6rem; font-size: 12px; opacity: 0.85; }
+      .set-btn:hover { opacity: 1; }
+      .set-btn:disabled { opacity: 0.35; cursor: default; }
+      .set-status { font-size: 11px; width: 100%; text-align: right; }
+      .set-status.ok { color: #22c55e; }
+      .set-status.err { color: #f87171; }
+      html[data-theme^="eco"] .set-status.ok, html[data-theme^="eco"] .set-status.err { color: inherit; font-weight: 600; }
+      .al-setting { opacity: 0.9; }
       /* Today's peak readings above the chart */
       .peak-chip {
         display: inline-flex; align-items: baseline; gap: 0.4rem;
@@ -1460,6 +1480,22 @@
         ></div>
       </div>
 
+      <!-- INVERTER SETTINGS: read by everyone (QPIRI / QFLAG), changes need the password (RS232 only) -->
+      <div class="glass-card rounded-xl p-4" id="settingsCard">
+        <button id="settingsToggle" class="w-full flex items-center gap-2 text-left" aria-expanded="false">
+          <i class="fas fa-sliders-h text-emerald-400"></i>
+          <h3 class="font-semibold text-sm shrink-0">Inverter settings</h3>
+          <span id="settingsSummary" class="text-[11px] text-gray-400 truncate min-w-0"></span>
+          <i id="settingsChevron" class="fas fa-chevron-down ml-auto text-gray-400 transition-transform"></i>
+        </button>
+        <div id="settingsBody" class="hidden mt-3 space-y-4">
+          <div id="settingsLockBar" class="flex flex-wrap items-center gap-2 text-xs"></div>
+          <div id="settingsMsg" class="hidden text-xs"></div>
+          <div id="settingsGroups" class="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4"></div>
+          <div id="settingsFoot" class="text-[11px] text-gray-500"></div>
+        </div>
+      </div>
+
       <!-- POWER TRENDS: plain lines (solid / dashed / dotted), full-day time axis -->
       <div class="glass-card rounded-xl p-4 sm:p-5 space-y-4" id="trendsCard">
         <div class="flex flex-wrap justify-between items-center gap-2">
@@ -1773,7 +1809,7 @@
       let alertEvents = []; // newest first: {timestamp, event: start|clear, kind, code, key, text}
       const esc = (v) =>
         String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-      const ALERT_ICON = { fault: "fa-times-circle", warning: "fa-exclamation-triangle", info: "fa-info-circle" };
+      const ALERT_ICON = { fault: "fa-times-circle", warning: "fa-exclamation-triangle", info: "fa-info-circle", setting: "fa-sliders-h" };
       function alertChip(kind, code, text, title) {
         return `<span class="al-chip al-${kind}" title="${esc(title || "")}"><i class="fas ${ALERT_ICON[kind] || ALERT_ICON.info}"></i>` +
           (code ? `<span class="al-code">${esc(code)}</span>` : "") + `${esc(text)}</span>`;
@@ -1805,7 +1841,7 @@
       }
       function renderAlertHistory() {
         const dayAgo = Date.now() - 864e5;
-        const recent = alertEvents.filter((e) => e.event === "start" && e.kind !== "info" && new Date(e.timestamp) > dayAgo).length;
+        const recent = alertEvents.filter((e) => e.event === "start" && e.kind !== "info" && e.kind !== "setting" && new Date(e.timestamp) > dayAgo).length;
         document.getElementById("alertHistoryCount").innerText = recent ? `(${recent})` : "";
         const body = document.getElementById("alertHistoryBody");
         if (document.getElementById("alertHistory").classList.contains("hidden")) return;
@@ -1814,13 +1850,13 @@
               .map((e) => {
                 const t = new Date(e.timestamp).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
                 const ev = e.event === "start"
-                  ? `<span class="font-semibold">${e.kind === "info" ? "STARTED" : "RAISED"}</span>`
+                  ? `<span class="font-semibold">${e.kind === "setting" ? "CHANGED" : e.kind === "info" ? "STARTED" : "RAISED"}</span>`
                   : '<span class="text-gray-400">cleared</span>';
                 return `<tr class="border-b border-gray-800"><td class="py-1 pr-3 w-px font-mono text-gray-400 whitespace-nowrap">${esc(t)}</td>` +
                   `<td class="pr-3 w-px whitespace-nowrap">${ev}</td><td>${alertChip(e.kind, e.code, e.text, e.kind)}</td></tr>`;
               })
               .join("")
-          : '<tr><td class="py-2 text-gray-500">No warnings or faults recorded yet</td></tr>';
+          : '<tr><td class="py-2 text-gray-500">No warnings, faults or setting changes recorded yet</td></tr>';
       }
 
       // ---------- Inverter details ----------
@@ -2627,9 +2663,14 @@
             ? "mode-switch px-4 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white flex items-center gap-2"
             : "mode-switch px-4 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white flex items-center gap-2";
       }
-      document.getElementById("demoModeBtn").onclick = () => setMode("demo");
-      document.getElementById("serialModeBtn").onclick = () =>
+      document.getElementById("demoModeBtn").onclick = () => {
+        setMode("demo");
+        loadSettings();
+      };
+      document.getElementById("serialModeBtn").onclick = () => {
         setMode("serial");
+        loadSettings();
+      };
       document.getElementById("serialConnectBtn").onclick = async () => {
         try {
           await connectSerial();
@@ -2657,6 +2698,199 @@
       document.getElementById("detailsToggle").onclick = () =>
         setDetailsOpen(document.getElementById("detailsBody").classList.contains("hidden"));
       try { if (localStorage.getItem("pg-details-open") === "1") setDetailsOpen(true); } catch (e) {}
+      // ---------- Inverter settings (RS232 only; changes need the password) ----------
+      let settingsView = null; // GET /api/settings
+      const settingsRowStatus = {}; // key -> { cls, text } shown under a row after Apply
+      const SET_GROUPS = ["Priorities", "Charging", "Battery voltages", "Options"];
+      // Cookies only reach the server when the page comes from it (port 8080)
+      const settingsSameOrigin = API === "";
+
+      function settingText(def, v) {
+        if (v === null || v === undefined) return "–";
+        if (def.kind === "choice") return def.options[v] ?? String(v);
+        if (def.kind === "amps") return `${v} A`;
+        if (def.kind === "volts") return v === 0 && def.allowZero ? "0 (when full)" : `${Number(v).toFixed(1)} V`;
+        if (def.kind === "flag") return v ? "On" : "Off";
+        return String(v);
+      }
+      function settingControl(key, def, v) {
+        const id = `set-${key}`;
+        const opts = (pairs) => pairs
+          .map(([val, label]) => `<option value="${esc(val)}"${String(val) === String(v) ? " selected" : ""}>${esc(label)}</option>`)
+          .join("");
+        if (def.kind === "choice") return `<select id="${id}">${opts(Object.entries(def.options))}</select>`;
+        if (def.kind === "amps")
+          return `<select id="${id}">${opts((settingsView.values[def.list] || []).map((a) => [a, `${a} A`]))}</select>`;
+        if (def.kind === "volts")
+          return `<input id="${id}" type="number" inputmode="decimal" step="0.1" min="${def.allowZero ? 0 : def.min}" max="${def.max}" value="${esc(v)}"> V`;
+        if (def.kind === "flag") return `<select id="${id}">${opts([[true, "On"], [false, "Off"]])}</select>`;
+        return "";
+      }
+      function readControl(key, def) {
+        const el = document.getElementById(`set-${key}`);
+        if (!el) return undefined;
+        if (def.kind === "choice") return el.value;
+        if (def.kind === "flag") return el.value === "true";
+        return Number(el.value);
+      }
+
+      function renderSettings() {
+        const v = settingsView;
+        const groups = document.getElementById("settingsGroups");
+        const bar = document.getElementById("settingsLockBar");
+        const foot = document.getElementById("settingsFoot");
+        const vals = v?.values;
+        document.getElementById("settingsSummary").innerText = vals && v.defs
+          ? `· ${settingText(v.defs.outputPriority, vals.outputPriority)} · charger: ${settingText(v.defs.chargerPriority, vals.chargerPriority).toLowerCase()}`
+          : "";
+        if (document.getElementById("settingsBody").classList.contains("hidden")) return;
+        if (currentMode !== "serial") {
+          bar.innerHTML = "";
+          groups.innerHTML = '<div class="text-sm text-gray-400">Settings are shown in Live mode.</div>';
+          foot.innerHTML = "";
+          return;
+        }
+        if (!v) {
+          bar.innerHTML = "";
+          groups.innerHTML = '<div class="text-sm text-gray-400">Reading settings…</div>';
+          return;
+        }
+        const unlocked = v.available && v.authenticated && settingsSameOrigin;
+        // Lock bar
+        if (!v.available) {
+          bar.innerHTML = `<i class="fas fa-info-circle"></i><span>${esc(v.reason)}</span>`;
+        } else if (!settingsSameOrigin) {
+          bar.innerHTML = '<i class="fas fa-lock"></i><span>To change settings, open the dashboard from the server itself (port 8080).</span>';
+        } else if (!v.passwordSet) {
+          bar.innerHTML = '<i class="fas fa-lock"></i><span>Changes are locked: no password is set yet. On the server run <code>python inverter_server.py --set-password</code>, then restart it.</span>';
+        } else if (!v.authenticated) {
+          bar.innerHTML = `<i class="fas fa-lock"></i><span>Locked</span>
+            <form id="settingsLogin" class="flex items-center gap-2 ml-auto">
+              <input id="settingsPw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Settings password">
+              <button class="set-btn" type="submit"><i class="fas fa-unlock mr-1"></i>Unlock</button>
+            </form>`;
+        } else {
+          bar.innerHTML = `<i class="fas fa-lock-open"></i><span>Unlocked · changes go straight to the inverter</span>
+            <button id="settingsLogout" class="set-btn ml-auto" type="button"><i class="fas fa-lock mr-1"></i>Lock</button>`;
+        }
+        // Rows, by group
+        groups.innerHTML = !vals
+          ? ""
+          : SET_GROUPS.map((g) => {
+              const rows = Object.entries(v.defs)
+                .filter(([, d]) => d.group === g)
+                .map(([key, d]) => {
+                  const st = settingsRowStatus[key];
+                  return `<div class="set-row"><span class="set-label">${esc(d.label)}</span>` +
+                    (unlocked
+                      ? `<span class="set-ctl">${settingControl(key, d, vals[key])}<button class="set-btn set-apply" data-key="${esc(key)}">Apply</button></span>`
+                      : `<span class="set-val">${esc(settingText(d, vals[key]))}</span>`) +
+                    (st ? `<span class="set-status ${st.cls}">${esc(st.text)}</span>` : "") + "</div>";
+                })
+                .join("");
+              return `<section><h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">${esc(g)}</h4>${rows}</section>`;
+            }).join("");
+        foot.innerHTML = vals
+          ? esc([
+              `Rated ${vals.ratedVA} VA / ${vals.ratedW} W`,
+              `${vals.batteryRatedV} V battery (${v.batteryTypes[vals.batteryType] || vals.batteryType})`,
+              `grid input range: ${v.inputRanges[vals.inputRange] || vals.inputRange}`,
+              v.firmware ? `firmware ${v.firmware}` : null,
+              v.readAt ? `read ${new Date(v.readAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : null,
+            ].filter(Boolean).join(" · "))
+          : "";
+      }
+
+      async function loadSettings() {
+        if (currentMode !== "serial") return renderSettings();
+        try {
+          const r = await fetch(API + "/api/settings", { cache: "no-store" });
+          settingsView = await r.json();
+        } catch (e) {
+          settingsView = { available: false, reason: "Server not reachable", defs: {} };
+        }
+        renderSettings();
+      }
+      async function postJson(path, body) {
+        const r = await fetch(API + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        let data = {};
+        try { data = await r.json(); } catch (e) {}
+        return { status: r.status, data };
+      }
+      function setSettingsMsg(text, isErr) {
+        const el = document.getElementById("settingsMsg");
+        el.textContent = text || "";
+        el.className = text ? `text-xs ${isErr ? "text-red-400" : "text-gray-400"}` : "hidden";
+      }
+
+      document.getElementById("settingsBody").addEventListener("submit", async (e) => {
+        if (e.target.id !== "settingsLogin") return;
+        e.preventDefault();
+        const pw = document.getElementById("settingsPw").value;
+        const { status, data } = await postJson("/api/login", { password: pw });
+        setSettingsMsg(status === 200 ? "" : data.error || "Could not unlock", status !== 200);
+        await loadSettings();
+      });
+      document.getElementById("settingsBody").addEventListener("click", async (e) => {
+        if (e.target.closest("#settingsLogout")) {
+          await postJson("/api/logout", {});
+          setSettingsMsg("");
+          return loadSettings();
+        }
+        const btn = e.target.closest(".set-apply");
+        if (!btn || !settingsView?.values) return;
+        const key = btn.dataset.key;
+        const def = settingsView.defs[key];
+        const old = settingsView.values[key];
+        const value = readControl(key, def);
+        if (def.kind === "volts" && !Number.isFinite(value)) return;
+        if (String(value) === String(old)) {
+          settingsRowStatus[key] = { cls: "", text: "Already set to that" };
+          return renderSettings();
+        }
+        const warn = def.kind === "volts"
+          ? "\n\nWrong battery voltages can damage the battery. Check the values against your battery's datasheet."
+          : "";
+        if (!confirm(`Change "${def.label}"\nfrom ${settingText(def, old)} to ${settingText(def, value)}?${warn}`)) return;
+        document.querySelectorAll(".set-apply").forEach((b) => (b.disabled = true));
+        btn.textContent = "Sending…";
+        const { status, data } = await postJson("/api/settings", { key, value });
+        if (data.settings) settingsView = data.settings;
+        if (status === 401) {
+          settingsRowStatus[key] = null;
+          setSettingsMsg(data.error || "Signed out - unlock again", true);
+          return loadSettings();
+        }
+        settingsRowStatus[key] = data.ok
+          ? { cls: "ok", text: `✓ Applied · inverter now reports ${settingText(def, settingsView.values?.[key])}` }
+          : { cls: "err", text: data.error || (data.reply === "(NAK" ? "✗ The inverter refused this value (NAK)" : `✗ No confirmation from the inverter (${data.reply || "no reply"})`) };
+        renderSettings();
+      });
+
+      function setSettingsOpen(open) {
+        document.getElementById("settingsBody").classList.toggle("hidden", !open);
+        document.getElementById("settingsChevron").style.transform = open ? "rotate(180deg)" : "";
+        document.getElementById("settingsToggle").setAttribute("aria-expanded", open ? "true" : "false");
+        try { localStorage.setItem("pg-settings-open", open ? "1" : "0"); } catch (e) {}
+        if (open) {
+          renderSettings();
+          loadSettings();
+        }
+      }
+      document.getElementById("settingsToggle").onclick = () =>
+        setSettingsOpen(document.getElementById("settingsBody").classList.contains("hidden"));
+      // Keep the summary line and the session up to date (and notice a server restart)
+      // (but not while unlocked and open: a redraw would throw away a value being typed)
+      setInterval(() => {
+        const editing = settingsView?.authenticated &&
+          !document.getElementById("settingsBody").classList.contains("hidden");
+        if (!document.hidden && currentMode === "serial" && !editing) loadSettings();
+      }, 60000);
+
       document.getElementById("clearRawBtn").onclick = () => {
         rawLogEntries = [];
         document.getElementById("rawDataLog").innerHTML = "";
@@ -2735,6 +2969,8 @@
 
       // ?mode=demo opens straight into Demo (handy for previews / kiosk)
       setMode(new URLSearchParams(location.search).get("mode") === "demo" ? "demo" : "serial");
+      try { if (localStorage.getItem("pg-settings-open") === "1") setSettingsOpen(true); } catch (e) {}
+      loadSettings();
       updateWeeklySummary();
       renderChart();
     </script>

@@ -8,13 +8,16 @@ through, and replies can be recovered with:   char = (~byte & 0xFF) >> 1
 The first ~6 characters of every reply are lost while the adapter turns around,
 so QPIGS field 1 (grid voltage) is unreliable and is estimated instead.
 
-With a real USB-RS232 cable, start with --rs232 and everything decodes cleanly.
+With a real USB-RS232 cable (the preferred setup) every reply is CRC-checked, warnings
+are read every cycle, and inverter settings can be read and changed. The cable type is
+auto-detected. Wiring that works on this unit: RJ45 pin 2 -> DB9 2, pin 1 -> DB9 3, pin 8 -> DB9 5.
 
-Run:   python inverter_server.py            (COM3, port 8080)
-       python inverter_server.py --port COM5 --http 8080 --rs232
+Run:   python inverter_server.py --port COM4        (Windows)
+       python inverter_server.py --port /dev/serial/by-id/usb-FTDI_...   (Linux)
+       python inverter_server.py --set-password     (password that unlocks settings changes)
 Open:  http://localhost:8080
 """
-import argparse, csv, json, os, re, shutil, threading, time
+import argparse, csv, hashlib, hmac, json, os, re, secrets, shutil, threading, time
 from collections import deque
 from datetime import datetime
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -89,12 +92,25 @@ def crc_xmodem(data: bytes) -> int:
     return crc
 
 
-def pi30_frame(cmd: str) -> bytes:
-    c = crc_xmodem(cmd.encode())
+def pi30_crc(data: bytes) -> bytes:
+    c = crc_xmodem(data)
     hi, lo = c >> 8, c & 0xFF
+    # Voltronic never sends "(", CR or LF as a CRC byte
     if hi in (0x28, 0x0D, 0x0A): hi += 1
     if lo in (0x28, 0x0D, 0x0A): lo += 1
-    return cmd.encode() + bytes([hi, lo]) + b"\r"
+    return bytes([hi, lo])
+
+
+def pi30_frame(cmd: str) -> bytes:
+    return cmd.encode() + pi30_crc(cmd.encode()) + b"\r"
+
+
+def pi30_reply(raw: bytes):
+    """A clean RS232 reply "(...<crc><cr>" -> its text "(..." , or None if the CRC is wrong."""
+    if len(raw) < 4 or raw[:1] != b"(" or not raw.endswith(b"\r"):
+        return None
+    body = raw[:-3]
+    return body.decode("ascii", "replace") if pi30_crc(body) == raw[-3:-1] else None
 
 
 def decode_rs485_hack(raw: bytes) -> str:
@@ -283,6 +299,139 @@ def parse_qpiws(text: str, length: int):
     return [None] * start + [int(c) for c in run], start, length
 
 
+# ---------------------------------------------------------------- settings (RS232 only)
+
+OUTPUT_PRIORITY = {"0": "Utility first", "1": "Solar first", "2": "SBU (solar → battery → utility)"}
+BATTERY_TYPES = {"0": "AGM", "1": "Flooded", "2": "User-defined"}
+INPUT_RANGES = {"0": "Appliance (90–280 V)", "1": "UPS (170–280 V)"}
+# QFLAG letters -> (key, label). Changed with PE<letter> (enable) / PD<letter> (disable).
+FLAG_DEFS = {
+    "a": ("buzzer", "Buzzer"),
+    "x": ("backlight", "LCD backlight"),
+    "k": ("lcdReturnHome", "LCD returns to main screen"),
+    "j": ("powerSaving", "Power saving mode"),
+    "b": ("overloadBypass", "Overload → bypass to grid"),
+    "u": ("overloadRestart", "Auto-restart after overload"),
+    "v": ("overTempRestart", "Auto-restart after over-temperature"),
+    "y": ("sourceAlarm", "Beep when the main source is lost"),
+    "z": ("faultRecord", "Record fault codes"),
+}
+
+
+def parse_qpiri(text: str):
+    """QPIRI: rated values + the current settings."""
+    f = text.lstrip("(").split()
+    if len(f) < 18:
+        return None
+    try:
+        return {
+            "ratedVA": int(f[5]),
+            "ratedW": int(f[6]),
+            "batteryRatedV": float(f[7]),
+            "batteryRechargeV": float(f[8]),     # back to grid below this (SBU / solar first)
+            "batteryCutoffV": float(f[9]),       # low-battery shutdown
+            "batteryBulkV": float(f[10]),        # bulk / absorption (CV) voltage
+            "batteryFloatV": float(f[11]),
+            "batteryType": f[12],
+            "maxAcChargeCurrent": int(f[13]),
+            "maxChargeCurrent": int(f[14]),
+            "inputRange": f[15],
+            "outputPriority": f[16],
+            "chargerPriority": f[17],
+            "batteryRedischargeV": float(f[22]) if len(f) > 22 else None,  # back to battery above this
+        }
+    except ValueError:
+        return None
+
+
+def parse_qflag(text: str):
+    """QFLAG "(EuvyDabjkxz": letters after E are enabled, after D disabled."""
+    m = re.fullmatch(r"\(E([a-z]*)D([a-z]*)", text.strip())
+    if not m:
+        return None
+    on, off = m.groups()
+    return {FLAG_DEFS[c][0]: c in on for c in on + off if c in FLAG_DEFS}
+
+
+def parse_amp_list(text: str):
+    """QMCHGCR / QMUCHGCR: "(010 020 030 ..." -> [10, 20, 30, ...]"""
+    vals = re.findall(r"\d{2,3}", text)
+    return [int(v) for v in vals] or None
+
+
+def volt_cmd(prefix):
+    return lambda v: f"{prefix}{v:04.1f}"
+
+
+# Everything the dashboard may change. Each entry: label, group, kind, command builder, limits.
+# Voltage limits are for a 48 V battery bank; the inverter still has the final say (it answers NAK).
+SETTING_DEFS = {
+    "outputPriority": {"label": "Output source priority", "group": "Priorities", "kind": "choice",
+                       "options": OUTPUT_PRIORITY, "cmd": lambda v: f"POP0{v}"},
+    "chargerPriority": {"label": "Charger source priority", "group": "Priorities", "kind": "choice",
+                        "options": CHARGER_PRIORITY, "cmd": lambda v: f"PCP0{v}"},
+    "maxChargeCurrent": {"label": "Max charging current (solar + grid)", "group": "Charging", "kind": "amps",
+                         "list": "chargeOptions",
+                         "cmd": lambda v: f"MCHGC0{v:02d}" if v < 100 else f"MNCHGC0{v:03d}"},
+    "maxAcChargeCurrent": {"label": "Max grid charging current", "group": "Charging", "kind": "amps",
+                           "list": "acChargeOptions", "cmd": lambda v: f"MUCHGC{v:03d}"},
+    "batteryRechargeV": {"label": "Back to grid below", "group": "Battery voltages", "kind": "volts",
+                         "min": 44.0, "max": 51.0, "cmd": volt_cmd("PBCV")},
+    "batteryRedischargeV": {"label": "Back to battery above (0 = when full)", "group": "Battery voltages",
+                            "kind": "volts", "min": 48.0, "max": 58.0, "allowZero": True, "cmd": volt_cmd("PBDV")},
+    "batteryCutoffV": {"label": "Low-battery cut-off", "group": "Battery voltages", "kind": "volts",
+                       "min": 40.0, "max": 48.0, "cmd": volt_cmd("PSDV")},
+    "batteryBulkV": {"label": "Bulk (absorption) voltage", "group": "Battery voltages", "kind": "volts",
+                     "min": 48.0, "max": 58.4, "cmd": volt_cmd("PCVV")},
+    "batteryFloatV": {"label": "Float voltage", "group": "Battery voltages", "kind": "volts",
+                      "min": 48.0, "max": 58.4, "cmd": volt_cmd("PBFT")},
+    **{key: {"label": label, "group": "Options", "kind": "flag",
+             "cmd": (lambda c: lambda v: f"{'PE' if v else 'PD'}{c}")(c)}
+       for c, (key, label) in FLAG_DEFS.items()},
+}
+
+
+def build_setting_cmd(key, value, current):
+    """Validate a requested change against the limits and the current settings.
+    Returns (command, cleaned value) or raises ValueError with a message for the user."""
+    d = SETTING_DEFS.get(key)
+    if not d:
+        raise ValueError("unknown setting")
+    kind = d["kind"]
+    if kind == "choice":
+        v = str(value)
+        if v not in d["options"]:
+            raise ValueError("not one of the allowed options")
+    elif kind == "amps":
+        v = int(value)
+        allowed = current.get(d["list"]) or []
+        if v not in allowed:
+            raise ValueError(f"allowed values: {', '.join(map(str, allowed))} A")
+    elif kind == "volts":
+        v = round(float(value), 1)
+        if not (d.get("allowZero") and v == 0) and not d["min"] <= v <= d["max"]:
+            raise ValueError(f"must be between {d['min']} and {d['max']} V")
+        s = {**current, key: v}
+        if s.get("batteryFloatV") and s.get("batteryBulkV") and s["batteryFloatV"] > s["batteryBulkV"]:
+            raise ValueError("float voltage can't be above the bulk voltage")
+        if s.get("batteryCutoffV") and s.get("batteryRechargeV") and s["batteryCutoffV"] >= s["batteryRechargeV"]:
+            raise ValueError("cut-off must be below the back-to-grid voltage")
+        if s.get("batteryRedischargeV") and s.get("batteryRechargeV") and s["batteryRedischargeV"] <= s["batteryRechargeV"]:
+            raise ValueError("back-to-battery must be above back-to-grid (or 0)")
+    elif kind == "flag":
+        if not isinstance(value, bool):
+            raise ValueError("must be true or false")
+        v = value
+    else:
+        raise ValueError("unsupported setting")
+    return d["cmd"](v), v
+
+
+def setting_defs_public():
+    """SETTING_DEFS without the command builders, for the dashboard."""
+    return {k: {f: x for f, x in d.items() if f != "cmd"} for k, d in SETTING_DEFS.items()}
+
+
 def sanity_ok(d) -> bool:
     """Reject frames that decoded but contain bit errors."""
     return (
@@ -459,6 +608,11 @@ class Inverter:
         self.ws_known_from = None
         self.active_fault = 0    # last QPGS0 fault code
         self.events = deque(load_events(200), maxlen=200)  # newest first
+        # Settings (QPIRI + QFLAG + allowed current lists); RS232 only
+        self.settings = None
+        self.settings_at = 0.0
+        self.settings_stale = True
+        self.firmware = None
 
     def query(self, ser, cmd, wait=2.2, quiet_len=100):
         ser.reset_input_buffer()
@@ -469,15 +623,52 @@ class Inverter:
             chunk = ser.read(256)
             if chunk:
                 buf += chunk
-                # Clean RS232 replies end in CR; with the RS485 hack, wait for the line to go quiet
-                if self.rs232 and buf.endswith(b"\r") and len(buf) > 20:
+                # Clean RS232 replies end in CR (CRC bytes never are CR); with the RS485 hack,
+                # wait for the line to go quiet
+                if self.rs232 and buf.endswith(b"\r") and len(buf) >= 4:
                     break
             elif buf and len(buf) > quiet_len:
                 break
         return buf
 
     def decode(self, raw):
-        return raw.decode("ascii", "replace") if self.rs232 else decode_rs485_hack(raw)
+        """RS232: CRC-checked text ("" if the CRC is wrong). RS485 hack: best-effort decode."""
+        return (pi30_reply(raw) or "") if self.rs232 else decode_rs485_hack(raw)
+
+    def read_settings(self, ser):
+        """QPIRI + QFLAG (+ the allowed current lists and firmware, once). RS232 only."""
+        s = dict(self.settings or {})
+        p = parse_qpiri(self.decode(self.query(ser, "QPIRI")))
+        fl = parse_qflag(self.decode(self.query(ser, "QFLAG")))
+        if not p or fl is None:
+            return False
+        s.update(p)
+        s.update(fl)
+        if not s.get("chargeOptions"):
+            s["chargeOptions"] = parse_amp_list(self.decode(self.query(ser, "QMCHGCR")))
+        if not s.get("acChargeOptions"):
+            s["acChargeOptions"] = parse_amp_list(self.decode(self.query(ser, "QMUCHGCR")))
+        if not self.firmware:
+            fw = self.decode(self.query(ser, "QVFW"))
+            m = re.search(r"VERFW:([\d.]+)", fw)
+            self.firmware = m.group(1).lstrip("0") if m else None
+        with self.lock:
+            self.settings, self.settings_at, self.settings_stale = s, time.time(), False
+        return True
+
+    def run_job(self, ser, job):
+        """A queued request from the web side (the serial port has one user: this thread)."""
+        if job["kind"] == "query":
+            r = self.query(ser, job["cmd"], wait=3.0)
+            job["result"] = {"hex": r.hex(" "), "decoded": decode_rs485_hack(r),
+                             "ascii": r.decode("ascii", "replace")}
+        elif job["kind"] == "set":
+            r = self.query(ser, job["cmd"], wait=4.0)
+            reply = pi30_reply(r)
+            job["result"] = {"reply": reply, "ack": reply == "(ACK"}
+            self.settings_stale = True
+            self.read_settings(ser)  # read back what the inverter now reports
+        job["done"].set()
 
     def run(self):
         while True:
@@ -488,8 +679,10 @@ class Inverter:
                         raw = self.query(ser, "QPIGS")
                         # Auto-detect cable: try clean RS232 ASCII first, then the RS485 decode
                         text = raw.decode("ascii", "replace")
+                        crc_bad = False
                         if parse_qpigs(text):
                             self.rs232 = True
+                            crc_bad = pi30_reply(raw) is None  # parsed, but damaged on the way
                         else:
                             hacked = decode_rs485_hack(raw)
                             if parse_qpigs(hacked):
@@ -501,20 +694,20 @@ class Inverter:
                         self.raw_log.appendleft(
                             f"{datetime.now():%H:%M:%S} RX {len(raw)}B  {''.join(c if 32 <= ord(c) < 127 else '·' for c in text)}"
                         )
-                        d = parse_qpigs(text)
+                        d = None if crc_bad else parse_qpigs(text)
                         # Second query for the real work mode + clean grid voltage
                         if self.qpgs_supported:
                             r2 = self.query(ser, "QPGS0", wait=3.0)
-                            t2 = r2.decode("ascii", "replace") if self.rs232 else decode_rs485_hack(r2)
-                            p = parse_qpgs(t2)
+                            p = parse_qpgs(self.decode(r2))
                             if p:
                                 self.last_pgs, self.last_pgs_at = p, time.time()
                         pgs = self.last_pgs if time.time() - self.last_pgs_at < 30 else None
                         if pgs:
                             self.track_fault(pgs["faultCode"])
-                        # Warning bits: not every cycle (each query costs ~2 s on the RS485 cable)
+                        # Warning bits: every cycle on RS232 (a reply takes ~0.2 s); every 3rd on
+                        # the RS485 cable, where each query costs ~2 s
                         self.cycle += 1
-                        if self.cycle % 3 == 1:
+                        if self.rs232 or self.cycle % 3 == 1:
                             r3 = self.query(ser, "QPIWS", wait=2.5, quiet_len=25)
                             t3 = self.decode(r3)
                             self.raw_log.appendleft(
@@ -537,13 +730,12 @@ class Inverter:
                         with self.new_data:
                             self.seq += 1
                             self.new_data.notify_all()
-                        # Run any diagnostic queries between polls (serial port is single-user)
+                        # Settings: on start, every 5 min, and right after a change (RS232 only)
+                        if self.rs232 and (self.settings_stale or time.time() - self.settings_at > 300):
+                            self.read_settings(ser)
+                        # Run queued web requests between polls (serial port is single-user)
                         while self.pending:
-                            job = self.pending.pop(0)
-                            r = self.query(ser, job[0], wait=3.0)
-                            job[2] = {"hex": r.hex(" "), "decoded": decode_rs485_hack(r),
-                                      "ascii": r.decode("ascii", "replace")}
-                            job[1].set()
+                            self.run_job(ser, self.pending.pop(0))
                         time.sleep(self.interval)
             except serial.SerialException as e:
                 self.last_error = str(e)
@@ -656,6 +848,91 @@ EVENTS_FILE = "events.csv"
 EVENT_KEYS = ["timestamp", "event", "kind", "code", "key", "text"]
 
 
+# ---------------------------------------------------------------- auth (settings changes only)
+
+# Next to the logs folder: %LOCALAPPDATA%\PowerGray\auth.json or ~/PowerGray/auth.json
+AUTH_FILE = os.path.join(os.path.dirname(LOG_DIR), "auth.json")
+SESSION_IDLE = 30 * 60       # signed out after 30 min without activity
+LOCK_AFTER, LOCK_FOR = 5, 300  # 5 wrong passwords -> no tries for 5 min (per client address)
+
+
+def hash_password(pw: str, salt: bytes, rounds: int) -> str:
+    return hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, rounds).hex()
+
+
+def set_password_interactive():
+    import getpass
+    pw = getpass.getpass("New settings password (min 8 characters): ")
+    if len(pw) < 8:
+        raise SystemExit("Too short - nothing saved.")
+    if getpass.getpass("Repeat it: ") != pw:
+        raise SystemExit("The two entries differ - nothing saved.")
+    salt, rounds = os.urandom(16), 300_000
+    os.makedirs(os.path.dirname(AUTH_FILE), exist_ok=True)
+    with open(AUTH_FILE, "w") as fh:
+        json.dump({"salt": salt.hex(), "rounds": rounds, "hash": hash_password(pw, salt, rounds)}, fh)
+    try:
+        os.chmod(AUTH_FILE, 0o600)  # owner-only on Linux; no effect on Windows
+    except OSError:
+        pass
+    print(f"Saved to {AUTH_FILE}. Restart the server to use it.")
+
+
+class Auth:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.sessions = {}   # token -> last activity
+        self.fails = {}      # client ip -> (count, locked_until)
+        try:
+            with open(AUTH_FILE) as fh:
+                self.cfg = json.load(fh)
+        except (OSError, ValueError):
+            self.cfg = None
+
+    @property
+    def password_set(self):
+        return bool(self.cfg)
+
+    def login(self, ip, pw):
+        """-> (token or None, error message or None)"""
+        if not self.cfg:
+            return None, "No password is set on the server yet"
+        now = time.time()
+        with self.lock:
+            n, until = self.fails.get(ip, (0, 0))
+            if now < until:
+                return None, f"Too many wrong passwords - try again in {(int(until - now) + 59) // 60} min"
+        good = hmac.compare_digest(
+            hash_password(str(pw), bytes.fromhex(self.cfg["salt"]), self.cfg["rounds"]), self.cfg["hash"])
+        with self.lock:
+            if not good:
+                n = 1 if until else n + 1  # a served lock-out starts the count again
+                self.fails[ip] = (n, now + LOCK_FOR if n >= LOCK_AFTER else 0)
+                return None, "Wrong password"
+            self.fails.pop(ip, None)
+            token = secrets.token_urlsafe(32)
+            self.sessions = {t: a for t, a in self.sessions.items() if now - a < SESSION_IDLE}
+            self.sessions[token] = now
+            return token, None
+
+    def check(self, token):
+        """Valid session? Also extends it (sliding expiry)."""
+        if not token:
+            return False
+        now = time.time()
+        with self.lock:
+            last = self.sessions.get(token)
+            if last is None or now - last >= SESSION_IDLE:
+                self.sessions.pop(token, None)
+                return False
+            self.sessions[token] = now
+            return True
+
+    def logout(self, token):
+        with self.lock:
+            self.sessions.pop(token, None)
+
+
 def load_events(n):
     """Last n warning/fault events from the log, newest first."""
     path = os.path.join(LOG_DIR, EVENTS_FILE)
@@ -672,7 +949,7 @@ def load_events(n):
 # ---------------------------------------------------------------- http
 
 
-def make_handler(inv: Inverter):
+def make_handler(inv: Inverter, auth: Auth):
     class H(SimpleHTTPRequestHandler):
         # Don't trust the OS registry (Windows sometimes maps .js to text/plain)
         extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
@@ -685,14 +962,112 @@ def make_handler(inv: Inverter):
         def log_message(self, *a):
             pass
 
-        def _json(self, obj):
+        def _json(self, obj, code=200, cors=True, cookie=None):
             body = json.dumps(obj).encode()
-            self.send_response(200)
+            self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            if cors:  # read-only data may be fetched from a page served elsewhere
+                self.send_header("Access-Control-Allow-Origin", "*")
+            if cookie is not None:
+                self.send_header("Set-Cookie", cookie)
             self.end_headers()
             self.wfile.write(body)
+
+        # ---- session helpers (settings changes only)
+        def _token(self):
+            from http.cookies import SimpleCookie
+            c = SimpleCookie()
+            try:
+                c.load(self.headers.get("Cookie", ""))
+            except Exception:
+                return None
+            return c["pg_session"].value if "pg_session" in c else None
+
+        def _same_origin(self):
+            """Changes are only accepted from pages served by this server (blocks other sites
+            from posting with the browser's cookie)."""
+            origin = self.headers.get("Origin")
+            if origin is None:
+                return True  # non-browser client; it still needs the session cookie
+            from urllib.parse import urlparse
+            return urlparse(origin).netloc == self.headers.get("Host", "")
+
+        def _body(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > 4096 or "application/json" not in self.headers.get("Content-Type", ""):
+                return None
+            try:
+                return json.loads(self.rfile.read(n) or b"{}")
+            except ValueError:
+                return None
+
+        def _settings_view(self):
+            with inv.lock:
+                s = dict(inv.settings) if inv.settings else None
+                read_at = inv.settings_at
+            if not inv.rs232:
+                why = "Settings need the RS232 cable (the server is reading through RS485)."
+            elif not s:
+                why = "Reading the settings from the inverter…"
+            else:
+                why = None
+            return {
+                "available": why is None,
+                "reason": why,
+                "passwordSet": auth.password_set,
+                "authenticated": auth.check(self._token()),
+                "values": s,
+                "readAt": datetime.fromtimestamp(read_at).astimezone().isoformat(timespec="seconds")
+                if read_at else None,
+                "firmware": inv.firmware,
+                "batteryTypes": BATTERY_TYPES,
+                "inputRanges": INPUT_RANGES,
+                "defs": setting_defs_public(),
+            }
+
+        def do_POST(self):
+            p = self.path.split("?")[0]
+            if not self._same_origin():
+                return self._json({"error": "cross-site request refused"}, 403, cors=False)
+            body = self._body()
+            if body is None:
+                return self._json({"error": "expected a small JSON body"}, 400, cors=False)
+            if p == "/api/login":
+                token, err = auth.login(self.client_address[0], body.get("password", ""))
+                if not token:
+                    return self._json({"error": err}, 401, cors=False)
+                return self._json({"ok": True}, cors=False,
+                                  cookie=f"pg_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_IDLE}")
+            if p == "/api/logout":
+                auth.logout(self._token())
+                return self._json({"ok": True}, cors=False,
+                                  cookie="pg_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+            if p == "/api/settings":
+                if not auth.check(self._token()):
+                    return self._json({"error": "Please unlock settings first"}, 401, cors=False)
+                if not inv.rs232 or not inv.settings:
+                    return self._json({"error": "Settings need the RS232 cable and a settings read"}, 409, cors=False)
+                key, value = body.get("key"), body.get("value")
+                with inv.lock:
+                    current = dict(inv.settings)
+                try:
+                    cmd, value = build_setting_cmd(key, value, current)
+                except (ValueError, TypeError) as e:
+                    return self._json({"error": str(e) or "invalid value"}, 400, cors=False)
+                old = current.get(key)
+                job = {"kind": "set", "cmd": cmd, "done": threading.Event(), "result": None}
+                inv.pending.append(job)
+                if not job["done"].wait(30):
+                    return self._json({"error": "The inverter did not answer in time"}, 504, cors=False)
+                res = job["result"]
+                label = SETTING_DEFS[key]["label"]
+                if res["ack"]:
+                    inv.add_event("start", "setting", None, key, f"{label}: {old} → {value}")
+                print(f"setting {key} {old!r} -> {value!r} ({cmd}) from {self.client_address[0]}: {res['reply']}")
+                return self._json({"ok": res["ack"], "reply": res["reply"], "command": cmd,
+                                   "settings": self._settings_view()}, cors=False)
+            return self._json({"error": "not found"}, 404, cors=False)
 
         def _stream(self):
             """Server-Sent Events: push every new reading to the browser."""
@@ -748,11 +1123,13 @@ def make_handler(inv: Inverter):
                 cmd = parse_qs(urlparse(self.path).query).get("cmd", [""])[0].upper()
                 if not re.fullmatch(r"Q[A-Z0-9]{1,8}", cmd):
                     return self._json({"error": "only read-only Q... commands allowed"})
-                job = [cmd, threading.Event(), None]
+                job = {"kind": "query", "cmd": cmd, "done": threading.Event(), "result": None}
                 inv.pending.append(job)
-                if not job[1].wait(20):
+                if not job["done"].wait(20):
                     return self._json({"error": "timeout"})
-                return self._json({"cmd": cmd, **job[2]})
+                return self._json({"cmd": cmd, **job["result"]})
+            if p == "/api/settings":
+                return self._json(self._settings_view(), cors=False)
             if p == "/":
                 self.path = "/dashboard.html"
             return super().do_GET()
@@ -836,7 +1213,12 @@ if __name__ == "__main__":
     ap.add_argument("--http", type=int, default=8080)
     ap.add_argument("--interval", type=float, default=3.0)
     ap.add_argument("--rs232", action="store_true", help="optional hint; cable type is auto-detected")
+    ap.add_argument("--set-password", action="store_true",
+                    help="set the password that unlocks inverter settings in the dashboard, then exit")
     a = ap.parse_args()
+    if a.set_password:
+        set_password_interactive()
+        raise SystemExit(0)
 
     migrate_old_logs()
     file_logs_by_month()
@@ -844,7 +1226,10 @@ if __name__ == "__main__":
     load_today_history(inv)
     threading.Thread(target=inv.run, daemon=True).start()
     ThreadingHTTPServer.daemon_threads = True  # open live streams don't block Ctrl+C
-    srv = ThreadingHTTPServer(("0.0.0.0", a.http), make_handler(inv))
+    auth = Auth()
+    if not auth.password_set:
+        print("Settings are locked: no password yet (run with --set-password to create one)")
+    srv = ThreadingHTTPServer(("0.0.0.0", a.http), make_handler(inv, auth))
     print(f"PowerGray: reading {a.port} -> open http://localhost:{a.http}")
     print(f"Logs: {LOG_DIR}")
     srv.serve_forever()

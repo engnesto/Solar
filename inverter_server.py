@@ -675,8 +675,19 @@ class Inverter:
             try:
                 with serial.Serial(self.port, 2400, timeout=0.15) as ser:
                     self.last_error = None
+                    silent = 0
                     while True:
                         raw = self.query(ser, "QPIGS")
+                        # An unplugged USB adapter often doesn't raise on Windows: the old handle
+                        # just reads nothing forever, and a re-plugged adapter is never picked up.
+                        # A few silent polls in a row -> drop the handle and reopen the port.
+                        if not raw:
+                            silent += 1
+                            if silent >= 3:
+                                raise serial.SerialException("no reply from inverter (adapter unplugged?)")
+                            self.bad += 1
+                            continue  # skip QPGS0/QPIWS: they'd only time out too
+                        silent = 0
                         # Auto-detect cable: try clean RS232 ASCII first, then the RS485 decode
                         text = raw.decode("ascii", "replace")
                         crc_bad = False
@@ -737,10 +748,18 @@ class Inverter:
                         while self.pending:
                             self.run_job(ser, self.pending.pop(0))
                         time.sleep(self.interval)
-            except serial.SerialException as e:
+            except (serial.SerialException, OSError) as e:
+                # OSError: a yanked adapter can surface as a raw Windows/Linux I/O error
+                if self.last_error != str(e):
+                    print("serial error:", e)  # print once, not every retry
                 self.last_error = str(e)
-                print("serial error:", e)
-                time.sleep(5)
+                # Fail queued web requests now, so a settings change made while the port is
+                # down doesn't run by surprise after the adapter is plugged back in
+                while self.pending:
+                    job = self.pending.pop(0)
+                    job["result"] = {"error": "inverter not connected"}
+                    job["done"].set()
+                time.sleep(2)
 
     # ---------------- warnings / events
 
@@ -1061,6 +1080,8 @@ def make_handler(inv: Inverter, auth: Auth):
                 if not job["done"].wait(30):
                     return self._json({"error": "The inverter did not answer in time"}, 504, cors=False)
                 res = job["result"]
+                if "error" in res:
+                    return self._json({"error": "The inverter is not connected — nothing was changed"}, 503, cors=False)
                 label = SETTING_DEFS[key]["label"]
                 if res["ack"]:
                     inv.add_event("start", "setting", None, key, f"{label}: {old} → {value}")

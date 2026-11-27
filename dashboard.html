@@ -57,6 +57,16 @@
       .day-row { cursor: pointer; }
       .day-row:hover, .day-row:focus-visible { background: rgba(46, 204, 113, 0.08); outline: none; }
       .day-row.day-row-sel { background: rgba(46, 204, 113, 0.16); font-weight: 600; }
+      /* Weekly Summary: never wrap a cell, keep a gap between columns, same digits everywhere */
+      #summaryTable th, #summaryTable td { white-space: nowrap; padding-left: 0.9rem; font-variant-numeric: tabular-nums; }
+      #summaryTable th:first-child, #summaryTable td:first-child { padding-left: 0; }
+      #summaryTable th { font-weight: 600; line-height: 1.15; vertical-align: bottom; }
+      #summaryTable th small { display: block; font-weight: 400; opacity: 0.7; }
+      /* Pinned W scale over a sideways-scrolling Today chart */
+      #chartYAxis span {
+        position: absolute; right: 0; transform: translateY(-50%);
+        font-size: 10px; padding: 0 4px; border-radius: 4px; white-space: nowrap;
+      }
       .glow-green {
         text-shadow: 0 0 4px #2ecc71;
       }
@@ -1479,8 +1489,11 @@
           </button>
         </div>
         <div id="chartLegend" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-300"></div>
+        <div id="chartPeak" class="hidden text-xs text-gray-400 -mt-2"></div>
         <div class="relative">
-          <!-- Today view needs room for 24 hourly labels: on narrow screens it scrolls sideways -->
+          <!-- Today view needs room for 24 hourly labels: on narrow screens it scrolls sideways,
+               and the W scale is pinned over the right edge (#chartYAxis) so it stays readable -->
+          <div id="chartYAxis" class="hidden absolute top-0 right-0 bottom-0 w-12 pointer-events-none z-10"></div>
           <div id="chartScroll" class="overflow-x-auto">
             <div id="chartBox" class="relative h-60 sm:h-72">
               <canvas id="powerChartCanvas" aria-label="Power trend chart"></canvas>
@@ -1493,7 +1506,7 @@
       </div>
 
       <!-- Weekly Summary Table -->
-      <div id="weeklySummaryContainer" class="glass-card rounded-xl p-5">
+      <div id="weeklySummaryContainer" class="glass-card rounded-xl p-4 sm:p-5">
         <div class="flex items-center gap-2">
           <i class="fas fa-calendar-week text-emerald-400"></i>
           <h3 class="font-semibold">Weekly Summary</h3>
@@ -1507,12 +1520,12 @@
           <table class="w-full text-xs" id="summaryTable">
             <thead>
               <tr class="border-b border-gray-700">
-                <th class="text-left py-2">Day</th>
-                <th class="text-right">Solar kWh</th>
-                <th class="text-right">Load kWh</th>
-                <th class="text-right">Solar→Load</th>
-                <th class="text-right">Batt→Load</th>
-                <th class="text-right">Grid→Load</th>
+                <th class="text-left py-2">Day<small>&nbsp;</small></th>
+                <th class="text-right">Solar<small>kWh</small></th>
+                <th class="text-right">Load<small>kWh</small></th>
+                <th class="text-right" title="Load supplied by solar (kWh)">Solar<small>→ load</small></th>
+                <th class="text-right" title="Load supplied by battery (kWh)">Batt<small>→ load</small></th>
+                <th class="text-right" title="Load supplied by grid (kWh)">Grid<small>→ load</small></th>
               </tr>
             </thead>
             <tbody id="summaryTbody">
@@ -2108,9 +2121,48 @@
         },
       };
 
+      // When the Today chart scrolls sideways, its right-hand W scale would be off screen most of the
+      // time. Instead the chart hides its own tick labels and this plugin mirrors them into #chartYAxis,
+      // which sits over the right edge of the visible area.
+      let pinnedAxisKey = "";
+      const pinnedAxis = {
+        id: "pinnedAxis",
+        afterDraw(chart, _args, opts) {
+          const box = document.getElementById("chartYAxis");
+          if (!opts.on) { box.classList.add("hidden"); pinnedAxisKey = ""; return; }
+          const y = chart.scales.y, th = chartTheme();
+          const key = y.ticks.map((t) => t.value).join() + "|" + y.top + "|" + y.bottom + "|" + currentTheme();
+          if (key === pinnedAxisKey) return;
+          pinnedAxisKey = key;
+          box.innerHTML = y.ticks
+            .map((t) => `<span style="top:${y.getPixelForValue(t.value)}px;color:${th.muted};background:${th.surface}e6">${fmtW(t.value)}</span>`)
+            .join("");
+          box.classList.remove("hidden");
+        },
+      };
+
+      // Above the chart: the highest single reading, since the lines are short averages and run lower
+      function renderPeak(series, pts, bm) {
+        const el = document.getElementById("chartPeak");
+        if (currentTimeRange === "week" || currentChartTab !== "prod" || !pts.length) {
+          el.classList.add("hidden");
+          return;
+        }
+        el.innerHTML =
+          series
+            .map(([, label, f]) => {
+              let best = null;
+              pts.forEach((p) => { if (!best || f(p) > f(best)) best = p; });
+              return `Peak ${label.toLowerCase()} <b>${fmtW(f(best))}</b> at ${hourLabel(hourOf(best))}`;
+            })
+            .join(" · ") + ` <span class="opacity-70">(lines show ${bm}-min averages)</span>`;
+        el.classList.remove("hidden");
+      }
+
       function buildTrendConfig() {
         const th = chartTheme();
         const today = currentTimeRange !== "week"; // Today or a picked day: one 24 h axis
+        const pin = today && (document.getElementById("chartScroll")?.clientWidth || 0) < TODAY_CHART_MIN_W;
         const series = tabSeries();
         const bm = bucketMinutes();
         const pts = today ? todayPoints() : [];
@@ -2141,7 +2193,7 @@
             drawTicks: false,
           },
           border: { display: false },
-          ticks: { color: th.muted, maxTicksLimit: 5, padding: 6, callback: (v) => (today ? fmtW(v) : `${v} kWh`) },
+          ticks: { display: !pin, color: th.muted, maxTicksLimit: 5, padding: 6, callback: (v) => (today ? fmtW(v) : `${v} kWh`) },
         };
         const xAxis = today
           ? {
@@ -2163,14 +2215,15 @@
           config: {
             type: "line",
             data: { labels: today ? undefined : days.map((d) => d.label), datasets },
-            plugins: [crosshair],
+            plugins: [crosshair, pinnedAxis],
             options: {
               responsive: true,
               maintainAspectRatio: false,
               animation: false, // no redraw animation: less GPU/CPU work on every update
               interaction: { mode: "index", intersect: false },
-              layout: { padding: { top: 6 } },
+              layout: { padding: { top: 6, right: pin ? 48 : 0 } }, // room for the pinned scale at the far end
               plugins: {
+                pinnedAxis: { on: pin },
                 legend: { display: false }, // drawn above the chart as line samples
                 tooltip: {
                   callbacks: {
@@ -2191,11 +2244,16 @@
         document.getElementById("chartEmpty").classList.toggle("hidden", !empty);
         const { series, config } = buildTrendConfig();
         renderLegend(series);
+        renderPeak(series, today ? todayPoints() : [], bucketMinutes());
         if (chartInstance) chartInstance.destroy();
         chartInstance = null;
         // 24 hourly labels need ~40 px each; narrower screens get a sideways-scrolling chart
         document.getElementById("chartBox").style.minWidth = today ? TODAY_CHART_MIN_W + "px" : "";
-        if (empty) return;
+        if (empty) {
+          document.getElementById("chartYAxis").classList.add("hidden");
+          pinnedAxisKey = "";
+          return;
+        }
         const ctx = document.getElementById("powerChartCanvas").getContext("2d");
         chartInstance = new Chart(ctx, config);
         if (currentTimeRange === "today" && scrollToNowPending) {
@@ -2232,7 +2290,7 @@
             .map((d) => {
               total += d.solar;
               const sel = currentTimeRange === "day" && pickedDay?.date === d.date;
-              return `<tr class="day-row border-b border-gray-800${sel ? " day-row-sel" : ""}" data-date="${d.date}" data-label="${d.day}" tabindex="0" title="Show this day in Power Trends"><td class="py-2"><i class="fas fa-chart-line text-emerald-400/60 mr-1"></i>${d.day}</td><td class="text-right font-mono">${d.solar.toFixed(2)}</td><td class="text-right font-mono">${d.load.toFixed(2)}</td><td class="text-right">${d.solarToLoad.toFixed(2)}</td><td class="text-right">${d.battToLoad.toFixed(2)}</td><td class="text-right">${d.gridToLoad.toFixed(2)}</td></tr>`;
+              return `<tr class="day-row border-b border-gray-800${sel ? " day-row-sel" : ""}" data-date="${d.date}" data-label="${d.day}" tabindex="0" title="${d.day}: show this day in Power Trends"><td class="py-2"><i class="fas fa-chart-line text-emerald-400/60 mr-1"></i>${d.day.split(" ").slice(0, 2).join(" ")}</td><td class="text-right">${d.solar.toFixed(2)}</td><td class="text-right">${d.load.toFixed(2)}</td><td class="text-right">${d.solarToLoad.toFixed(2)}</td><td class="text-right">${d.battToLoad.toFixed(2)}</td><td class="text-right">${d.gridToLoad.toFixed(2)}</td></tr>`;
             })
             .join("");
           document.getElementById("weekTotalSpan").innerHTML = `${total.toFixed(2)} kWh total solar`;
@@ -2274,7 +2332,7 @@
           html = "";
         for (let [day, vals] of dailyMap.entries()) {
           totalSolar += vals.solar;
-          html += `<tr class="border-b border-gray-800"><td class="py-2">${day}</td><td class="text-right font-mono">${vals.solar.toFixed(1)}</td><td class="text-right font-mono">${vals.load.toFixed(1)}</td><td class="text-right">${vals.solarToL.toFixed(1)}</td><td class="text-right">${vals.battToL.toFixed(1)}</td><td class="text-right">${vals.gridToL.toFixed(1)}</td></tr>`;
+          html += `<tr class="border-b border-gray-800"><td class="py-2">${day}</td><td class="text-right">${vals.solar.toFixed(1)}</td><td class="text-right">${vals.load.toFixed(1)}</td><td class="text-right">${vals.solarToL.toFixed(1)}</td><td class="text-right">${vals.battToL.toFixed(1)}</td><td class="text-right">${vals.gridToL.toFixed(1)}</td></tr>`;
         }
         document.getElementById("summaryTbody").innerHTML =
           html || '<tr><td colspan="6" class="text-center">No data</td></tr>';

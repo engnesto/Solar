@@ -73,6 +73,15 @@
         padding: 0.2rem 0.4rem; color: inherit; font: inherit; font-size: 12px; max-width: 14rem;
       }
       .set-ctl input[type="number"] { width: 5.5rem; }
+      /* Password box: light fill + readable placeholder in every theme */
+      #settingsLockBar input {
+        background: rgba(255, 255, 255, 0.12); border-color: currentColor;
+        width: 9rem; min-width: 0; flex: 1 1 7rem; padding: 0.3rem 0.5rem;
+      }
+      #settingsLockBar input::placeholder { color: currentColor; opacity: 0.6; }
+      html[data-theme="eco"] #settingsLockBar input, html[data-theme="light"] #settingsLockBar input {
+        background: rgba(255, 255, 255, 0.55);
+      }
       .set-ctl option { color: #111; }
       .set-btn { border: 1px solid currentColor; border-radius: 0.4rem; padding: 0.15rem 0.6rem; font-size: 12px; opacity: 0.85; }
       .set-btn:hover { opacity: 1; }
@@ -2765,9 +2774,9 @@
           bar.innerHTML = '<i class="fas fa-lock"></i><span>Changes are locked: no password is set yet. On the server run <code>python inverter_server.py --set-password</code>, then restart it.</span>';
         } else if (!v.authenticated) {
           bar.innerHTML = `<i class="fas fa-lock"></i><span>Locked</span>
-            <form id="settingsLogin" class="flex items-center gap-2 ml-auto">
+            <form id="settingsLogin" class="flex items-center gap-2 ml-auto max-w-full">
               <input id="settingsPw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Settings password">
-              <button class="set-btn" type="submit"><i class="fas fa-unlock mr-1"></i>Unlock</button>
+              <button class="set-btn shrink-0" type="submit"><i class="fas fa-unlock mr-1"></i>Unlock</button>
             </form>`;
         } else {
           bar.innerHTML = `<i class="fas fa-lock-open"></i><span>Unlocked · changes go straight to the inverter</span>

@@ -2379,7 +2379,9 @@
       }
       let livePollTimer = null;
       // Works whether the page is served by inverter_server.py, Live Server, or opened as a file
-      const API = location.port === "8080" ? "" : "http://localhost:8080";
+      // Served by inverter_server.py (directly on :8080, or via an HTTPS proxy such as
+      // `tailscale serve`): same origin. Opened as a local file: talk to the local server.
+      const API = location.protocol === "file:" ? "http://localhost:8080" : "";
       function toHistoryPoint(p) {
         const ts = new Date(p.timestamp);
         return {

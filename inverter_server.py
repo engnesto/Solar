@@ -1010,7 +1010,11 @@ def make_handler(inv: Inverter, auth: Auth):
             if origin is None:
                 return True  # non-browser client; it still needs the session cookie
             from urllib.parse import urlparse
-            return urlparse(origin).netloc == self.headers.get("Host", "")
+            # Behind an HTTPS proxy (tailscale serve) the browser's host may arrive as
+            # X-Forwarded-Host. Another site can't forge that header: a cross-site request with
+            # a custom header needs a CORS preflight, which this server never approves.
+            hosts = {self.headers.get("Host", ""), self.headers.get("X-Forwarded-Host", "")}
+            return urlparse(origin).netloc in hosts - {""}
 
         def _body(self):
             n = int(self.headers.get("Content-Length") or 0)

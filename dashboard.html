@@ -1455,10 +1455,6 @@
                 style="width: 0%"
               ></div>
             </div>
-            <div
-              class="text-[10px] text-emerald-400/80 mt-1 text-right"
-              id="chargeFlowText"
-            >waiting for data…</div>
           </div>
         </div>
 
@@ -1707,7 +1703,6 @@
         });
         const bar = document.getElementById("batteryBar");
         if (bar) bar.style.width = "0%";
-        document.getElementById("chargeFlowText").innerText = "waiting for data…";
         document.getElementById("batteryStateBadge").innerHTML = '<i class="fas fa-hourglass-half mr-1"></i>WAITING';
         document.getElementById("invStatusBadge").innerHTML = '<i class="fas fa-circle text-[6px] text-gray-400"></i> WAITING';
         document.getElementById("sccVoltageVal").innerText = "--";
@@ -1777,12 +1772,6 @@
             : state === "DISCHARGING"
               ? '<i class="fas fa-bolt mr-1"></i>DISCHARGING'
               : '<i class="fas fa-pause mr-1"></i>IDLE';
-        document.getElementById("chargeFlowText").innerHTML =
-          state === "CHARGING"
-            ? `charging +${m.batteryDischargeCurrent.toFixed(1)}A`
-            : state === "DISCHARGING"
-              ? `discharging ${Math.abs(m.batteryDischargeCurrent).toFixed(1)}A`
-              : "standby";
         set("liveTimestamp", new Date().toLocaleTimeString());
         updateFlowDiagram(m);
         const badge = document.getElementById("invStatusBadge");
